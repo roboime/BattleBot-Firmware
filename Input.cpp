@@ -35,7 +35,7 @@
 // O sinal precisa ser tratado com o filtro de médias móveis
 // para que não saia extremamente ruidoso.
 #define FRAME_TIME 20000
-#define FRAME_COUNT 20
+#define FRAME_COUNT 10
 
 // mapa do tempo do receptor para o intervalo [-100,100]
 #define RECEPTOR_MIN 1120
@@ -48,9 +48,9 @@
 // Variáveis para o tratamento de sinal
 unsigned char frameCount[FRAME_COUNT];
 unsigned int speedMark;
-volatile unsigned curFrameCount;
 unsigned char currentFrame;
-volatile char dirBit;
+volatile unsigned curFrameCount;
+volatile unsigned char dirBit;
 
 // Variáveis para a leitura do sinal dos receptores
 unsigned char lastD, lastC;
@@ -89,26 +89,18 @@ ISR (PCINT1_vect)
 }
 
 // Interrupts externos associados aos pinos do encoder
-static void encoderISR0()
+ISR (INT0_vect)
 {
-    dirBit ^= 1;
     curFrameCount++;
-    if (dirBit == 1) dirBit |= 3;
-}
-static void encoderISR1()
-{
-    dirBit ^= 2;
-    curFrameCount++;
-    if (dirBit == 2) dirBit &= ~3;
 }
 
 // Inicialização do módulo
 void inSetup()
 {
     // Inicializar os interrupts do grupo D
-    DDRD &= ~D_RECEPTOR_MASK;
-    PCMSK2 |= D_RECEPTOR_MASK;
-    lastD = PIND & D_RECEPTOR_MASK;
+    //DDRD &= ~D_RECEPTOR_MASK;
+    //PCMSK2 |= D_RECEPTOR_MASK;
+    //lastD = PIND & D_RECEPTOR_MASK;
 
     // grupo C
     DDRC &= ~C_RECEPTOR_MASK;
@@ -116,15 +108,12 @@ void inSetup()
     lastC = PINC & C_RECEPTOR_MASK;
 
     // interrupt geral
-    PCICR |= (1 << PCIE1) | (1 << PCIE2);
+    PCICR |= (1 << PCIE1)/* | (1 << PCIE2)*/;
 
     // interrupts externos
-    pinMode(IN_ENCODER_0, INPUT);
-    pinMode(IN_ENCODER_1, INPUT);
-    attachInterrupt(digitalPinToInterrupt(IN_ENCODER_0),
-        encoderISR0, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(IN_ENCODER_1),
-        encoderISR1, CHANGE);
+    DDRD &= ~B0100;
+    EICRA = B0001;
+    EIMSK = 1;
 
     // inicialização das variáveis dos receptores
     for (char i = 0; i < 4; i++)
@@ -156,11 +145,12 @@ void inLoop()
     if (curTime - lastTime > FRAME_TIME)
     {
         // média móvel
-        speedMark -= frameCount[currentFrame];
-        frameCount[currentFrame] = curFrameCount;
-        speedMark += frameCount[currentFrame];
+        //speedMark -= frameCount[currentFrame];
+        //frameCount[currentFrame] = curFrameCount;
+        //speedMark += frameCount[currentFrame];
+        speedMark = curFrameCount;
 
-        if (++currentFrame >= FRAME_COUNT)
+        if (++currentFrame >= FRAME_COUNT) currentFrame = 0;
         curFrameCount = 0;
 
         while (curTime - lastTime > FRAME_TIME)
@@ -195,7 +185,8 @@ int inGetReceptorReadings(int channel)
 
 int inGetSpeed()
 {
-    return (dirBit & 3) ? -speedMark : +speedMark;
+    
+    return speedMark;
 }
 
 bool inSignalLost()

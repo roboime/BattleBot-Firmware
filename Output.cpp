@@ -50,21 +50,21 @@ void outSetMotorEnabled(bool val)
 
 void outSetMotorPower(char step)
 {
-    if (step == 0)
+
+    if (step > 6)
+    {
+        analogWrite(M_IN1, map(step, 0, 100, 0, 230));
+        digitalWrite(M_IN2, LOW);
+    }
+    else if (step < -6)
+    {
+        digitalWrite(M_IN1, LOW);
+        analogWrite(M_IN2, map(-step, 0, 100, 0, 230));
+    }
+    else
     {
         digitalWrite(M_IN1, LOW);
         digitalWrite(M_IN2, LOW);
-    }
-    else if (step > 0)
-    {
-        analogWrite(M_IN1, map(step, 0, 100, 0, 220));
-        digitalWrite(M_IN2, LOW);
-    }
-    else if (step < 0) // redundante, mas é pra ficar claro
-    {
-        digitalWrite(M_IN1, LOW);
-        analogWrite(M_IN2, map(-step, 0, 100, 0, 220));
-    }
     }
 }
 

@@ -1,13 +1,31 @@
-
+#include "Header.hpp"
 
 void setup()
 {
-  // put your setup code here, to run once:
-
+    //Serial.begin(9600);
+  
+    inSetup();
+    outSetup();
+    outSetMotorEnabled(true);
 }
 
 void loop()
 {
-  // put your main code here, to run repeatedly:
+    static unsigned long oldMillis = millis();
+    unsigned long cur = millis();
+    static int val = 0;
+    
+    inLoop();
+    
+    if (oldMillis / 20 != cur / 20)
+    {
+        //Serial.println(inGetSpeed());
+        val ^= 255;
+        outSetLed(val);
+    }
 
+    int pot = analogRead(A2);
+    outSetMotorPower(map(pot, 0, 1023, -100, 100));
+    
+    oldMillis = cur;
 }
