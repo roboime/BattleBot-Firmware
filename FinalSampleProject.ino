@@ -2,7 +2,7 @@
 
 void setup()
 {
-    //Serial.begin(9600);
+    Serial.begin(9600);
   
     inSetup();
     outSetup();
@@ -19,7 +19,7 @@ void loop()
     
     if (oldMillis / 20 != cur / 20)
     {
-        //Serial.println(inGetSpeed());
+        Serial.println(inGetSpeed());
         val ^= 255;
         outSetLed(val);
     }

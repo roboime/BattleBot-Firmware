@@ -145,10 +145,10 @@ void inLoop()
     if (curTime - lastTime > FRAME_TIME)
     {
         // média móvel
-        //speedMark -= frameCount[currentFrame];
-        //frameCount[currentFrame] = curFrameCount;
-        //speedMark += frameCount[currentFrame];
-        speedMark = curFrameCount;
+        speedMark -= frameCount[currentFrame];
+        frameCount[currentFrame] = curFrameCount;
+        speedMark += frameCount[currentFrame];
+        //speedMark = curFrameCount;
 
         if (++currentFrame >= FRAME_COUNT) currentFrame = 0;
         curFrameCount = 0;

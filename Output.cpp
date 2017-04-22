@@ -18,7 +18,7 @@
 
 // Potência "máxima" do motor, se ficar muito
 // perto de 255, o motor para
-#define MOTOR_MAX_POWER 220
+#define MOTOR_MAX_POWER 237
 
 void outSetup()
 {
@@ -51,15 +51,15 @@ void outSetMotorEnabled(bool val)
 void outSetMotorPower(char step)
 {
 
-    if (step > 6)
+    if (step > 7)
     {
-        analogWrite(M_IN1, map(step, 0, 100, 0, 230));
+        analogWrite(M_IN1, map(step, 0, 100, 0, MOTOR_MAX_POWER));
         digitalWrite(M_IN2, LOW);
     }
-    else if (step < -6)
+    else if (step < -7)
     {
         digitalWrite(M_IN1, LOW);
-        analogWrite(M_IN2, map(-step, 0, 100, 0, 230));
+        analogWrite(M_IN2, map(-step, 0, 100, 0, MOTOR_MAX_POWER));
     }
     else
     {
