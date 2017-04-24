@@ -17,7 +17,7 @@ Ts = %periodo amostral colocar o periodo de um loop do programa em segundos
 set(s,'Timeout', Ts);%tempo em segundos que o matlab aguarda novos dados
 
 
-%mostrar que as configurações foram feitas
+%mostrar que as configuraÃ§Ãµes foram feitas
 disp(get(s,'Name')); % mostra o nome "Serial - COM"
 prop(get(s,'BaudRate'));
 prop(get(s,'Databits'));
@@ -32,7 +32,7 @@ while(T(t) < 5)
     a = fgetl(s);
     
     T(t) = t*Ts;%mutiplicando pelo periodo de amostragem
-    X(t) = num2str(a); %a é uma string , convertendo a strin em um numero
+    X(t) = num2str(a); %a Ã© uma string , convertendo a strin em um numero
     
     t=t+1;
     a=0; %limpando o buffer
@@ -42,7 +42,7 @@ end;
 figure();
 plot(T,X);
 
-%fazendo a transformada de furier
+%fazendo a transformada rapida de furier
 N = length(X);
 k=0:N-1;
 T=N*Ts;
