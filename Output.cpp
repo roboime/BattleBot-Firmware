@@ -13,18 +13,16 @@
 // do LED
 #define M_IN1 5
 #define M_IN2 6
-#define M_SD 7
 #define LED 9
 
 // Potência "máxima" do motor, se ficar muito
 // perto de 255, o motor para
-#define MOTOR_MAX_POWER 237
+#define MOTOR_MAX_POWER 254
 
 void outSetup()
 {
     pinMode(M_IN1, OUTPUT);
     pinMode(M_IN2, OUTPUT);
-    pinMode(M_SD, OUTPUT);
     pinMode(LED, OUTPUT);
 }
 
@@ -32,11 +30,6 @@ void outSetup()
 void outSetLed(char val)
 {
     analogWrite(LED, val);
-}
-
-void outSetMotorEnabled(bool val)
-{
-    digitalWrite(M_SD, val ? HIGH : LOW);
 }
 
 // O esquema de fase-magnitude para o controle do
@@ -53,18 +46,18 @@ void outSetMotorPower(char step)
 
     if (step > 7)
     {
-        analogWrite(M_IN1, map(step, 0, 100, 0, MOTOR_MAX_POWER));
-        digitalWrite(M_IN2, LOW);
+        analogWrite(M_IN1, map(step, 0, 100, 255, 255-MOTOR_MAX_POWER));
+        digitalWrite(M_IN2, HIGH);
     }
     else if (step < -7)
     {
-        digitalWrite(M_IN1, LOW);
-        analogWrite(M_IN2, map(-step, 0, 100, 0, MOTOR_MAX_POWER));
+        digitalWrite(M_IN1, HIGH);
+        analogWrite(M_IN2, map(-step, 0, 100, 255, 255-MOTOR_MAX_POWER));
     }
     else
     {
-        digitalWrite(M_IN1, LOW);
-        digitalWrite(M_IN2, LOW);
+        digitalWrite(M_IN1, HIGH);
+        digitalWrite(M_IN2, HIGH);
     }
 }
 

@@ -6,7 +6,6 @@ void setup()
   
     inSetup();
     outSetup();
-    outSetMotorEnabled(true);
 }
 
 void loop()
@@ -20,6 +19,7 @@ void loop()
     if (oldMillis / 20 != cur / 20)
     {
         Serial.println(inGetSpeed());
+        
         val ^= 255;
         outSetLed(val);
     }
