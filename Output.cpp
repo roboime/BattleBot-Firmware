@@ -41,8 +41,9 @@ void outSetLed(char val)
 // Essa função aceita passos no intervalo
 // [-100,+100]
 
-void outSetMotorPower(char step)
+void outSetMotorPower(int step)
 {
+    if (step > 100) step = 100; else if (step < -100) step = -100;
 
     if (step > 7)
     {
@@ -60,5 +61,6 @@ void outSetMotorPower(char step)
         digitalWrite(M_IN2, HIGH);
     }
 }
+
 
 

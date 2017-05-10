@@ -6,20 +6,23 @@
 //////////////////////////////////////////////////
 
 #include <Arduino.h>
+#include <Filters.h>
 #include "Header.hpp"
 
-// Precisamos definir dois interrupts: um para o grupo de
-// pinos D e um para o grupo C, além dos dois interrupts
-// externos. Essas constantes facilitam a rápida leitura
-// dos pinos
+FilterOnePole lowpassFilter(LOWPASS, 1.8);
 
-// Pinos do receptor
-#define C_INPUT_MASK B11111
+// Precisamos definir um interrupt para o grupo C
+
+// Todos os pinos
+#define C_INPUT_MASK B11101
+
+// Encoder
+#define C_INTERRUPT_MASK B00001
+
+// Receptor
 #define C_RECEPTOR_MASK0 B00100
 #define C_RECEPTOR_MASK1 B01000
 #define C_RECEPTOR_MASK2 B10000
-#define C_ENCODER_MASK0 B00001
-#define C_ENCODER_MASK1 B00010
 
 // Pinos da dip-switch de configuração da placa
 #define IN_DIPSWITCH_0 4
@@ -32,59 +35,82 @@
 #define FRAME_COUNT 5
 
 // mapa do tempo do receptor para o intervalo [-100,100]
-#define RECEPTOR_MIN 1120
-#define RECEPTOR_MAX 1916
+const struct { unsigned int min, max; }
+receptorIntervals[3] = { { 139, 237 }, { 144, 236 }, { 120, 256 } };
 
 // se o receptor ficar mais de esse tempo em us sem mandar
 // uma onda de PWM, indicar que o controle foi perdido
-#define SIGNAL_LOSS_LIMIT 27000
+#define SIGNAL_LOSS_LIMIT 3000
 
 // Variáveis para o tratamento de sinal
 unsigned long frameCount[FRAME_COUNT];
 unsigned long speedMark;
 unsigned char currentFrame;
 volatile unsigned long curFrameCount;
-volatile unsigned char dirBit;
 
 // Variáveis para a leitura do sinal dos receptores
-unsigned char lastC;
-volatile unsigned long lastTimes[3][2];
-unsigned long receptorReadings[3];
-bool signalLost;
+unsigned int localReceptorReadings[3];
+unsigned int lastReadings[3];
+volatile unsigned int receptorReadings[3];
+bool copyDone;
+long signalCounter;
 
 // ISR do grupo de pinos C
-// Leitura dos dois últimos pinos do encoder
-ISR (PCINT1_vect)
+// Leitura do pino de encoder
+ISR (PCINT1_vect) { curFrameCount++; }
+
+// ISR do timer 2 para o polling do receptor
+ISR(TIMER2_COMPA_vect)
 {
-    unsigned long time = micros();
+    char curC = PINC;
 
-    unsigned char curC = PINC & C_INPUT_MASK;
-    unsigned char diff = curC ^ lastC;
-
-    if (diff & C_RECEPTOR_MASK0) lastTimes[0][!(curC & C_RECEPTOR_MASK0)] = time;
-    if (diff & C_RECEPTOR_MASK1) lastTimes[1][!(curC & C_RECEPTOR_MASK1)] = time;
-    if (diff & C_RECEPTOR_MASK2) lastTimes[2][!(curC & C_RECEPTOR_MASK2)] = time;
-
-    if (diff & C_ENCODER_MASK0) curFrameCount++;
-
-    lastC = curC;
+    if (curC & C_RECEPTOR_MASK0) localReceptorReadings[0]++;
+    else if (localReceptorReadings[0] != 0)
+    {
+        receptorReadings[0] = localReceptorReadings[0];
+        localReceptorReadings[0] = 0;
+    }
+    
+    if (curC & C_RECEPTOR_MASK1) localReceptorReadings[1]++;
+    else if (localReceptorReadings[1] != 0)
+    {
+        receptorReadings[1] = localReceptorReadings[1];
+        localReceptorReadings[1] = 0;
+    }
+    
+    if (curC & C_RECEPTOR_MASK2) { localReceptorReadings[2]++; signalCounter = 0; }
+    else if (localReceptorReadings[2] != 0)
+    {
+        receptorReadings[2] = localReceptorReadings[2];
+        localReceptorReadings[2] = 0;
+    }
+    else signalCounter++;
 }
 
 // Inicialização do módulo
 void inSetup()
 {
+    noInterrupts();
+    
     // Inicializar os interrupts do grupo C
-    DDRC &= ~C_INPUT_MASK;
-    PCMSK1 |= C_INPUT_MASK;
-    lastC = PINC & C_INPUT_MASK;
+    DDRC &= ~C_INPUT_MASK; // define como pinos de entrada
+    PORTB |= C_INPUT_MASK; // habilita o resistor pull-down
+    PCMSK1 |= C_INTERRUPT_MASK; // habilita o interrupt para o encoder
 
-    // interrupt geral
-    PCICR |= (1 << PCIE1);
+    // Define o timer
+    TCCR2A = 1 << WGM21; // modo CTC
+    TCCR2B = 1 << CS20; // sem prescaler
+    OCR2A = 128; // 64 ciclos por pulso
+
+    // interrupts
+    PCICR |= 1 << PCIE1;
+    TIMSK2 |= 1 << OCIE2A;
 
     // inicialização das variáveis dos receptores
     for (char i = 0; i < 3; i++)
     {
-        lastTimes[i][0] = lastTimes[i][1] = 0;
+        localReceptorReadings[i] = 0;
+        lastReadings[i] = 0;
         receptorReadings[i] = 0;
     }
 
@@ -94,7 +120,11 @@ void inSetup()
     speedMark = 0;
     curFrameCount = 0;
     currentFrame = 0;
-    dirBit = 0;
+    copyDone = false;
+
+    signalCounter = 0;
+
+    interrupts();
 
     // dip-switch
     pinMode(IN_DIPSWITCH_0, INPUT);
@@ -110,11 +140,8 @@ void inLoop()
     // percepção discreta de quadros
     if (curTime - lastTime > FRAME_TIME)
     {
-        // média móvel
-        speedMark -= frameCount[currentFrame];
-        frameCount[currentFrame] = curFrameCount;
-        speedMark += frameCount[currentFrame];
-        //speedMark = curFrameCount;
+        // filtro passa baixa
+        speedMark = lowpassFilter.input(curFrameCount);
 
         if (++currentFrame >= FRAME_COUNT) currentFrame = 0;
         curFrameCount = 0;
@@ -122,28 +149,19 @@ void inLoop()
         while (curTime - lastTime > FRAME_TIME)
             lastTime += FRAME_TIME;
     }
-
-    // leitura do receptor
-    unsigned char lowBits = ~((lastC >> 2) & B111);
-
-    signalLost = false;
-
-    for (char i = 0; i < 3; i++)
-    {
-        if ((lowBits & (i << i)) && lastTimes[i][1] != 0)
-        {
-            receptorReadings[i] = lastTimes[i][1] - lastTimes[i][0];
-            lastTimes[i][1] = 0;
-        }
-
-        if (curTime - lastTimes[i][0] > SIGNAL_LOSS_LIMIT) signalLost = true;
-    }
 }
 
 // funções voltadas para "pegar" o input
 int inGetReceptorReadings(int channel)
 {
-    return map(receptorReadings[channel], RECEPTOR_MIN, RECEPTOR_MAX, -100, 100);
+    if (signalCounter > SIGNAL_LOSS_LIMIT) return 0;
+  
+    int val = map(receptorReadings[channel], receptorIntervals[channel].min, receptorIntervals[channel].max, -100, 100);
+    if (val < -112 || val > 112) return lastReadings[channel];
+    if (val < -100) val = -100; else if (val > 100) val = 100;
+    return lastReadings[channel] = val;
+
+    //return receptorReadings[channel];
 }
 
 unsigned long inGetSpeed()
@@ -151,14 +169,10 @@ unsigned long inGetSpeed()
     return speedMark;
 }
 
-bool inSignalLost()
-{
-    return signalLost;
-}
-
 bool dipSwitch(int port)
 {
     return digitalRead(port ? IN_DIPSWITCH_1 : IN_DIPSWITCH_0) == HIGH;
 }
+
 
 
