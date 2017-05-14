@@ -13,19 +13,10 @@
 // externos. Essas constantes facilitam a rápida leitura
 // dos pinos
 
-// Pinos PD2 e PD3 (10 e 11 do Arduino)
-#define D_RECEPTOR_MASK B1100
-#define D_MASK0 B0100
-#define D_MASK1 B1000
-
 // Pinos PC2 e PC1 (A2 e A1 do Arduino)
 #define C_RECEPTOR_MASK B110
-#define C_MASK2 B100
-#define C_MASK3 B010
-
-// Pinos do encoder, para os interrupts externos
-#define IN_ENCODER_0 2
-#define IN_ENCODER_1 3
+#define C_MASK0 B010
+#define C_MASK1 B100
 
 // Pinos da dip-switch de configuração da placa
 #define IN_DIPSWITCH_0 8
@@ -38,8 +29,8 @@
 #define FRAME_COUNT 10
 
 // mapa do tempo do receptor para o intervalo [-100,100]
-#define RECEPTOR_MIN 1120
-#define RECEPTOR_MAX 1916
+const struct { int min, max; }
+receptorInterval[2] = { { 1116, 1912 }, { 1140, 1940 } };
 
 // se o receptor ficar mais de esse tempo em us sem mandar
 // uma onda de PWM, indicar que o controle foi perdido
@@ -53,25 +44,10 @@ volatile unsigned curFrameCount;
 volatile unsigned char dirBit;
 
 // Variáveis para a leitura do sinal dos receptores
-unsigned char lastD, lastC;
-volatile unsigned long lastTimes[4][2];
-unsigned long receptorReadings[4];
+unsigned char lastC;
+volatile unsigned long lastTimes[2][2];
+unsigned long receptorReadings[2];
 bool signalLost;
-
-// ISR do grupo de pinos D
-// Leitura dos dois primeiros pinos do encoder
-ISR (PCINT2_vect)
-{
-    unsigned long time = micros();
-
-    unsigned char curD = PIND & D_RECEPTOR_MASK;
-    unsigned char diff = curD ^ lastD;
-
-    if (diff & D_MASK0) lastTimes[0][!(curD & D_MASK0)] = time;
-    if (diff & D_MASK1) lastTimes[1][!(curD & D_MASK1)] = time;
-
-    lastD = curD;
-}
 
 // ISR do grupo de pinos C
 // Leitura dos dois últimos pinos do encoder
@@ -82,8 +58,8 @@ ISR (PCINT1_vect)
     unsigned char curC = PINC & C_RECEPTOR_MASK;
     unsigned char diff = curC ^ lastC;
 
-    if (diff & C_MASK2) lastTimes[2][!(curC & C_MASK2)] = time;
-    if (diff & C_MASK3) lastTimes[3][!(curC & C_MASK3)] = time;
+    if (diff & C_MASK0) lastTimes[0][!(curC & C_MASK0)] = time;
+    if (diff & C_MASK1) lastTimes[1][!(curC & C_MASK1)] = time;
 
     lastC = curC;
 }
@@ -97,18 +73,13 @@ ISR (INT0_vect)
 // Inicialização do módulo
 void inSetup()
 {
-    // Inicializar os interrupts do grupo D
-    //DDRD &= ~D_RECEPTOR_MASK;
-    //PCMSK2 |= D_RECEPTOR_MASK;
-    //lastD = PIND & D_RECEPTOR_MASK;
-
     // grupo C
-    DDRC &= ~C_RECEPTOR_MASK;
+    DDRC &= ~C_RECEPTOR_MASK; // pinos de entrada
     PCMSK1 |= C_RECEPTOR_MASK;
     lastC = PINC & C_RECEPTOR_MASK;
 
     // interrupt geral
-    PCICR |= (1 << PCIE1)/* | (1 << PCIE2)*/;
+    PCICR |= (1 << PCIE1);
 
     // interrupts externos
     DDRD &= ~B0100;
@@ -116,14 +87,14 @@ void inSetup()
     EIMSK = 1;
 
     // inicialização das variáveis dos receptores
-    for (char i = 0; i < 4; i++)
+    for (int i = 0; i < 2; i++)
     {
         lastTimes[i][0] = lastTimes[i][1] = 0;
         receptorReadings[i] = 0;
     }
 
     // inicialização das variáveis dos encoders
-    for (char i = 0; i < FRAME_COUNT; i++)
+    for (int i = 0; i < FRAME_COUNT; i++)
         frameCount[i] = 0;
     speedMark = 0;
     curFrameCount = 0;
@@ -158,16 +129,13 @@ void inLoop()
     }
 
     // leitura do receptor
-    unsigned char lowBits = (!(lastD & D_MASK0) << 0) ||
-                            (!(lastD & D_MASK1) << 1) ||
-                            (!(lastC & C_MASK2) << 2) ||
-                            (!(lastC & C_MASK3) << 3);
+    unsigned char lowBits = ~(lastC & C_RECEPTOR_MASK) >> 1;
 
     signalLost = false;
 
-    for (char i = 0; i < 4; i++)
+    for (char i = 0; i < 2; i++)
     {
-        if (((lowBits >> i) & 1) && lastTimes[i][1] != 0)
+        if ((lowBits & (1 << i)) && lastTimes[i][1] != 0)
         {
             receptorReadings[i] = lastTimes[i][1] - lastTimes[i][0];
             lastTimes[i][1] = 0;
@@ -180,7 +148,9 @@ void inLoop()
 // funções voltadas para "pegar" o input
 int inGetReceptorReadings(int channel)
 {
-    return map(receptorReadings[channel], RECEPTOR_MIN, RECEPTOR_MAX, -100, 100);
+    int val = map(receptorReadings[channel], receptorInterval[channel].min, receptorInterval[channel].max, -100, 100);
+    if (val < -100) val = -100; else if (val > 100) val = 100;
+    return val;
 }
 
 int inGetSpeed()

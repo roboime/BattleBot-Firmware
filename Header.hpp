@@ -15,7 +15,5 @@ bool dipSwitch(int port);
 
 // Módulo output
 void outSetup();
-void outSetLed(char val);
-void outSetMotorEnabled(bool val);
-void outSetMotorPower(char step);
+void outSetMotorPower(int motor, int step);
 

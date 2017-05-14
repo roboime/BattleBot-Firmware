@@ -6,7 +6,6 @@ void setup()
   
     inSetup();
     outSetup();
-    outSetMotorEnabled(true);
 }
 
 void loop()
@@ -19,13 +18,16 @@ void loop()
     
     if (oldMillis / 20 != cur / 20)
     {
-        Serial.println(inGetSpeed());
-        val ^= 255;
-        outSetLed(val);
+        Serial.print(inGetReceptorReadings(0));
+        Serial.print(' ');
+        Serial.println(inGetReceptorReadings(1));
     }
 
-    int pot = analogRead(A2);
-    outSetMotorPower(map(pot, 0, 1023, -100, 100));
+    int x = inGetReceptorReadings(0);
+    int y = inGetReceptorReadings(1);
+
+    outSetMotorPower(0, y-x);
+    outSetMotorPower(1, y+x);
     
     oldMillis = cur;
 }

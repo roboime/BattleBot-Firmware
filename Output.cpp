@@ -11,32 +11,23 @@
 
 // Pinos de saída para o circuito da ponte H e
 // do LED
-#define M_IN1 5
-#define M_IN2 6
-#define M_SD 7
-#define LED 9
+const struct { char in1, in2; }
+motorPins[] = { 5, 6, 9, 10 };
 
 // Potência "máxima" do motor, se ficar muito
 // perto de 255, o motor para
-#define MOTOR_MAX_POWER 237
+#define MOTOR_MAX_POWER 250
 
 void outSetup()
 {
-    pinMode(M_IN1, OUTPUT);
-    pinMode(M_IN2, OUTPUT);
-    pinMode(M_SD, OUTPUT);
-    pinMode(LED, OUTPUT);
-}
-
-// LED controlado por PWM
-void outSetLed(char val)
-{
-    analogWrite(LED, val);
-}
-
-void outSetMotorEnabled(bool val)
-{
-    digitalWrite(M_SD, val ? HIGH : LOW);
+    pinMode(motorPins[0].in1, OUTPUT);
+    pinMode(motorPins[0].in2, OUTPUT);
+    pinMode(motorPins[1].in1, OUTPUT);
+    pinMode(motorPins[1].in2, OUTPUT);
+    
+    // acertar o Timer1 para os nossos propósitos
+    TCCR1A = (1 << WGM10);                              // WGM1 = 5: Fast PWM 8-bit
+    TCCR1B = (1 << WGM12) | (1 << CS11) | (1 << CS10);  // CS1 = 3: prescaler de 64. Resultado: mesma frequência do Timer0
 }
 
 // O esquema de fase-magnitude para o controle do
@@ -48,23 +39,25 @@ void outSetMotorEnabled(bool val)
 // Essa função aceita passos no intervalo
 // [-100,+100]
 
-void outSetMotorPower(char step)
+void outSetMotorPower(int motor, int step)
 {
+    if (step > 100) step = 100;
+    else if (step < -100) step = -100;
 
     if (step > 7)
     {
-        analogWrite(M_IN1, map(step, 0, 100, 0, MOTOR_MAX_POWER));
-        digitalWrite(M_IN2, LOW);
+        analogWrite(motorPins[motor].in1, map(step, 0, 100, 0, MOTOR_MAX_POWER));
+        digitalWrite(motorPins[motor].in2, LOW);
     }
     else if (step < -7)
     {
-        digitalWrite(M_IN1, LOW);
-        analogWrite(M_IN2, map(-step, 0, 100, 0, MOTOR_MAX_POWER));
+        digitalWrite(motorPins[motor].in1, LOW);
+        analogWrite(motorPins[motor].in2, map(-step, 0, 100, 0, MOTOR_MAX_POWER));
     }
     else
     {
-        digitalWrite(M_IN1, LOW);
-        digitalWrite(M_IN2, LOW);
+        digitalWrite(motorPins[motor].in1, LOW);
+        digitalWrite(motorPins[motor].in2, LOW);
     }
 }
 
