@@ -12,7 +12,9 @@
 // Pinos de saída para o circuito da ponte H e
 // do LED
 const struct { char in1, in2; }
-motorPins[] = { 5, 6, 9, 10 };
+motorPins[] = { { 5, 6 }, { 9, 10 } };
+
+const char leds[] = { A0, A1 };
 
 // Potência "máxima" do motor, se ficar muito
 // perto de 255, o motor para
@@ -26,8 +28,8 @@ void outSetup()
     pinMode(motorPins[1].in2, OUTPUT);
     
     // acertar o Timer1 para os nossos propósitos
-    TCCR1A = (1 << WGM10);                              // WGM1 = 5: Fast PWM 8-bit
-    TCCR1B = (1 << WGM12) | (1 << CS11) | (1 << CS10);  // CS1 = 3: prescaler de 64. Resultado: mesma frequência do Timer0
+    TCCR1A = _BV(WGM10);                              // WGM1 = 5: Fast PWM 8-bit
+    TCCR1B = _BV(WGM12) | _BV(CS11) | _BV(CS10);     // CS1 = 3: prescaler de 64. Resultado: mesma frequência do Timer0
 }
 
 // O esquema de fase-magnitude para o controle do
@@ -39,7 +41,7 @@ void outSetup()
 // Essa função aceita passos no intervalo
 // [-100,+100]
 
-void outSetMotorPower(int motor, int step)
+void outSetMotorPower(char motor, int step)
 {
     if (step > 100) step = 100;
     else if (step < -100) step = -100;
@@ -59,6 +61,11 @@ void outSetMotorPower(int motor, int step)
         digitalWrite(motorPins[motor].in1, LOW);
         digitalWrite(motorPins[motor].in2, LOW);
     }
+}
+
+void outSetLed(char led, bool val)
+{
+    digitalWrite(leds[led], val ? HIGH : LOW);
 }
 
 

@@ -8,12 +8,12 @@
 // Módulo input
 void inSetup();
 void inLoop();
-int inGetReceptorReadings(int channel);
-int inGetSpeed();
-bool inSignalLost();
-bool dipSwitch(int port);
+int inGetReceptorReadings(char channel);
+int inGetSpeedLeft();
+int inGetSpeedRight();
+bool dipSwitch(char port);
 
 // Módulo output
 void outSetup();
-void outSetMotorPower(int motor, int step);
-
+void outSetMotorPower(char motor, int step);
+void outSetLed(char led, bool val);
