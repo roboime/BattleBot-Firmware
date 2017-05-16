@@ -6,6 +6,7 @@
 //////////////////////////////////////////////////
 
 #include <Arduino.h>
+#include <Filters.h>
 #include "Header.hpp"
 
 typedef unsigned char u8;
@@ -29,7 +30,7 @@ char dipSwitches[] = { 4, 7, 8 };
 // O sinal precisa ser tratado com o filtro de médias móveis
 // para que não saia extremamente ruidoso.
 #define FRAME_TIME 20000
-#define FRAME_COUNT 10
+#define FRAME_COUNT 5
 
 // mapa do tempo do receptor para o intervalo [-100,100]
 const struct { unsigned int min, max; }
@@ -132,7 +133,8 @@ void inSetup()
     // inicialização das variáveis dos receptores
     for (int i = 0; i < 3; i++)
     {
-        lastTimes[i][0] = lastTimes[i][1] = 0;
+        localReceptorReadings[i] = 0;
+        lastReadings[i] = 0;
         receptorReadings[i] = 0;
     }
 
@@ -221,5 +223,6 @@ bool dipSwitch(int port)
 {
     return digitalRead(dipSwitches[port]) == HIGH;
 }
+
 
 

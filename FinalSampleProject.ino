@@ -1,3 +1,5 @@
+#include <Filters.h>
+
 #include "Header.hpp"
 
 void setup()
@@ -23,7 +25,7 @@ void loop()
     {
         val = !val;
         outSetLed(0, val);
-      
+
         Serial.print(inGetReceptorReadings(0));
         Serial.print(' ');
         Serial.print(inGetReceptorReadings(1));
@@ -41,3 +43,4 @@ void loop()
     
     oldMillis = cur;
 }
+
