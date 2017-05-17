@@ -32,14 +32,6 @@ char dipSwitches[] = { 4, 7, 8 };
 #define FRAME_TIME 20000
 #define FRAME_COUNT 5
 
-// mapa do tempo do receptor para o intervalo [-100,100]
-const struct { unsigned int min, max; }
-receptorInterval[3] = { { 1120, 1920 }, { 1140, 1932 }, { 1020, 2020 } };
-
-// se o receptor ficar mais de esse tempo em us
-// sem mandar sinal, consideramos o sinal perdido
-#define SIGNAL_LOSS_LIMIT 25600
-
 // Variáveis para o tratamento de sinal no encoder esquerdo
 u8 lastD;
 int frameCountL[FRAME_COUNT];
@@ -56,14 +48,30 @@ volatile int curFrameCountR;
 unsigned char currentFrame;
 
 // Variáveis para a leitura do sinal dos receptores
-u8 lastC;
+#define N_SAMPLES 7
 volatile unsigned long lastTimes[3][2];
-unsigned long receptorReadings[3];
-u8 ports[3];
-bool signalLost;
+char curMask, curBit, lastRead;
+unsigned long receptorReadings[3][N_SAMPLES];
+
+// filtro de mediana
+char order[3][N_SAMPLES];
+char curMedianSample[3];
+
+// mapa do tempo do receptor para o intervalo [-100,100]
+const struct { long min, max; }
+receptorInterval[3] = { { 1124, 1880 }, { 1144, 1904 }, { 1060, 1980 } };
+
+// se o receptor ficar mais de esse tempo em us
+// sem mandar sinal, consideramos o sinal perdido
+#define SIGNAL_LOSS_LIMIT 40000
+#define SIGNAL_LOSS_FADE 360000
+unsigned long timeSinceSignalLost;
+
+// Filtro de atenuação dos receptores, em u/256
+#define K 256
 
 // Tabela de lookup para os padrões de gray code
-const u8 grayCodeTable[16] =
+signed char grayCodeTable[16] =
 {
      0, -1, +1,  0,
     +1,  0,  0, -1,
@@ -76,7 +84,7 @@ const u8 grayCodeTable[16] =
 ISR (PCINT2_vect)
 {
     // Feio mexer com código assim, mas já que precisa... (não é pra tirar esses (u8) :/)
-    u8 curD = (u8)((u8)PIND & (u8)D_INPUT_MASK);
+    u8 curD = PIND & D_INPUT_MASK;
     //curFrameCountL += grayCodeTable[lastD & (curD >> 2)];
     curFrameCountL += grayCodeTable[(u8)((u8)lastD & (u8)((u8)curD >> (u8)2))];
     lastD = curD;
@@ -86,7 +94,7 @@ ISR (PCINT2_vect)
 // Leitura do encoder esquerdo
 ISR (PCINT0_vect)
 {
-    u8 curB = (u8)((u8)PINB & (u8)B_INPUT_MASK);
+    u8 curB = PINB & B_INPUT_MASK;
     //curFrameCountR += grayCodeTable[(lastB >> 1) & (curB >> 3)];
     curFrameCountR += grayCodeTable[(u8)((u8)((u8)lastB >> (u8)1) & (u8)((u8)curB >> (u8)3))];
     lastB = curB;
@@ -96,16 +104,41 @@ ISR (PCINT0_vect)
 // Leitura dos pinos do receptor
 ISR (PCINT1_vect)
 {
-    unsigned long time = micros();
+    bool curRead = ((u8)PINC & (u8)curMask) != 0;
 
-    u8 curC = (u8)((u8)PINC & (u8)C_INPUT_MASK);
-    u8 diff = (u8)((u8)curC ^ (u8)lastC);
+    if (curRead) lastTimes[curBit][0] = micros();
+    else if (lastRead)
+    {
+        lastTimes[curBit][1] = micros();
+        curMask <<= (u8)1;
+        curBit++;
 
-    if ((u8)diff & (u8)C_MASK0) lastTimes[0][ports[0] = !ports[0]] = time;
-    if ((u8)diff & (u8)C_MASK1) lastTimes[1][ports[1] = !ports[1]] = time;
-    if ((u8)diff & (u8)C_MASK2) lastTimes[2][ports[2] = !ports[2]] = time;
+        if (curBit == 3)
+        {
+            curMask = C_MASK0;
+            curBit = 0;
+        }
+    }
 
-    lastC = curC;
+    lastRead = curRead;
+}
+
+void resetReceptorStatus()
+{
+    for (int i = 0; i < 3; i++)
+    {
+        lastTimes[i][0] = lastTimes[i][1] = 0;
+        curMedianSample[i] = 0;
+
+        for (int j = 0; j < N_SAMPLES; j++)
+        {
+            receptorReadings[i][j] = 0;
+            order[i][j] = j;
+        }
+    }
+
+    curBit = 0;
+    curMask = C_MASK0;
 }
 
 // Inicialização do módulo
@@ -113,34 +146,24 @@ void inSetup()
 {
     noInterrupts();
     // grupo D, otimizações para reduzir o tamanho do código compilado
-    DDRD = ~D_INPUT_MASK;
-    PCMSK2 = D_INPUT_MASK;
+    DDRD &= ~D_INPUT_MASK;
+    PCMSK2 |= D_INPUT_MASK;
     lastD = (u8)((u8)PIND & (u8)D_INPUT_MASK);
 
     // grupo B
     DDRB = ~B_INPUT_MASK;
-    PCMSK0 = B_INPUT_MASK;
+    PCMSK0 |= B_INPUT_MASK;
     lastB = (u8)((u8)PINB & (u8)B_INPUT_MASK);
  
     // grupo C
-    DDRC = ~C_INPUT_MASK;
-    PCMSK1 = C_INPUT_MASK;
-    lastC = (u8)((u8)PINC & (u8)C_INPUT_MASK);
+    DDRC &= ~C_INPUT_MASK;
+    PORTC |= C_INPUT_MASK;
+    PCMSK1 |= C_INPUT_MASK;
+
+    lastRead = false;
 
     // interrupt geral
     PCICR = B111;
-
-    // inicialização das variáveis dos receptores
-    for (int i = 0; i < 3; i++)
-    {
-        localReceptorReadings[i] = 0;
-        lastReadings[i] = 0;
-        receptorReadings[i] = 0;
-    }
-
-    ports[0] = !((u8)PINC & (u8)C_MASK0);
-    ports[1] = !((u8)PINC & (u8)C_MASK1);
-    ports[2] = !((u8)PINC & (u8)C_MASK2);
 
     // inicialização das variáveis dos encoders
     for (int i = 0; i < FRAME_COUNT; i++)
@@ -148,6 +171,9 @@ void inSetup()
     speedMarkL = speedMarkR = 0;
     curFrameCountL = curFrameCountR = 0;
     currentFrame = 0;
+
+    resetReceptorStatus();
+    timeSinceSignalLost = 0;
 
     // dip-switch
     for (int i = 0; i < 3; i++)
@@ -166,13 +192,16 @@ void inLoop()
     if (curTime - lastTime > FRAME_TIME)
     {
         // média móvel
-        speedMarkL -= frameCountL[currentFrame];
-        frameCountL[currentFrame] = curFrameCountL;
-        speedMarkL += frameCountL[currentFrame];
+        //speedMarkL -= frameCountL[currentFrame];
+        //frameCountL[currentFrame] = curFrameCountL;
+        //speedMarkL += frameCountL[currentFrame];
 
-        speedMarkR -= frameCountR[currentFrame];
-        frameCountR[currentFrame] = curFrameCountR;
-        speedMarkR += frameCountR[currentFrame];
+        //speedMarkR -= frameCountR[currentFrame];
+        //frameCountR[currentFrame] = curFrameCountR;
+        //speedMarkR += frameCountR[currentFrame];
+
+        speedMarkL = curFrameCountL;
+        speedMarkR = curFrameCountR;
 
         if (++currentFrame >= FRAME_COUNT) currentFrame = 0;
         curFrameCountL = curFrameCountR = 0;
@@ -180,33 +209,85 @@ void inLoop()
         while (curTime - lastTime > FRAME_TIME)
             lastTime += FRAME_TIME;
     }
+    
+    // leitura do receptor
 
-    // leitura do receptor, otimização
-    //u8 lowBits = ~(lastC & C_INPUT_MASK) >> 3;
-    u8 lowBits = (u8)((u8)~((u8)lastC & (u8)C_INPUT_MASK) >> (u8)3);
-
-    signalLost = false;
-
-    for (char i = 0; i < 3; i++)
+    bool updates[3] = { false, false, false };
+    noInterrupts();
+    long globalLastTime = 0;
+    for (int i = 0; i < 3; i++)
     {
-        if (((u8)lowBits & (u8)(1 << i)) && lastTimes[i][1] != 0)
+        if (lastTimes[i][1] != 0)
         {
-            receptorReadings[i] = lastTimes[i][1] - lastTimes[i][0];
+            receptorReadings[i][curMedianSample[i]] = lastTimes[i][1] - lastTimes[i][0];
+            updates[i] = true;
             lastTimes[i][1] = 0;
         }
 
-        if (curTime - lastTimes[i][0] > SIGNAL_LOSS_LIMIT) signalLost = true;
+        if (globalLastTime < lastTimes[i][0])
+            globalLastTime = lastTimes[i][0];
+    }
+    interrupts();
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (updates[i])
+        {
+            // bubble the result
+            int k;
+            for (k = 0; k < N_SAMPLES; k++) if (order[i][k] == curMedianSample[i]) break;
+            if (k == N_SAMPLES) continue;
+            
+            while (k > 0 && receptorReadings[i][order[i][k]] <= receptorReadings[i][order[i][k-1]])
+            {
+                char tmp = order[i][k];
+                order[i][k] = order[i][k-1];
+                order[i][k-1] = tmp;
+                k--;
+            }
+
+            while (k < N_SAMPLES-1 && receptorReadings[i][order[i][k]] >= receptorReadings[i][order[i][k+1]])
+            {
+                char tmp = order[i][k];
+                order[i][k] = order[i][k+1];
+                order[i][k+1] = tmp;
+                k++;
+            }
+            
+            if (++curMedianSample[i] == N_SAMPLES) curMedianSample[i] = 0;
+        }
+    }
+    
+    timeSinceSignalLost = 0;
+    if (curTime > globalLastTime + SIGNAL_LOSS_LIMIT)
+        timeSinceSignalLost = curTime - globalLastTime - SIGNAL_LOSS_LIMIT;
+    if (timeSinceSignalLost > SIGNAL_LOSS_FADE)
+    {
+        timeSinceSignalLost = SIGNAL_LOSS_FADE;
+        resetReceptorStatus();
     }
 }
 
 // funções voltadas para "pegar" o input
 int inGetReceptorReadings(char channel)
 {
-    if (signalLost) return 0;
+    unsigned long ch = receptorReadings[channel][order[channel][N_SAMPLES/2]];
   
-    int val = map(receptorReadings[channel], receptorInterval[channel].min, receptorInterval[channel].max, -100, 100);
-    if (val < -100) val = -100; else if (val > 100) val = 100;
+    if (ch == 0) return 0;
+  
+    int val = map((long)ch, receptorInterval[channel].min, receptorInterval[channel].max, -250, 250);
+    if (val < -250) val = -250; else if (val > 250) val = 250;
+
+    if (timeSinceSignalLost > 0)
+    {
+        int decay = map((long)timeSinceSignalLost, 0, SIGNAL_LOSS_FADE, 0, 250);
+        if (val < 0) val = min(val + decay, 0);
+        else val = max(val - decay, 0);
+    }
+    
     return val;
+
+    //return receptorReadings[channel];
 }
 
 int inGetSpeedLeft()
@@ -217,6 +298,11 @@ int inGetSpeedLeft()
 int inGetSpeedRight()
 {
     return speedMarkR;
+}
+
+bool isSignalLost()
+{
+    return false;
 }
 
 bool dipSwitch(int port)

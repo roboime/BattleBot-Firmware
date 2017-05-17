@@ -11,6 +11,7 @@ void inLoop();
 int inGetReceptorReadings(char channel);
 int inGetSpeedLeft();
 int inGetSpeedRight();
+bool isSignalLost();
 bool dipSwitch(char port);
 
 // Módulo output

@@ -43,18 +43,18 @@ void outSetup()
 
 void outSetMotorPower(char motor, int step)
 {
-    if (step > 100) step = 100;
-    else if (step < -100) step = -100;
+    if (step > 250) step = 250;
+    else if (step < -250) step = -250;
 
-    if (step > 7)
+    if (step > 20)
     {
-        analogWrite(motorPins[motor].in1, map(step, 0, 100, 0, MOTOR_MAX_POWER));
+        analogWrite(motorPins[motor].in1, map(step, 0, 250, 0, MOTOR_MAX_POWER));
         digitalWrite(motorPins[motor].in2, LOW);
     }
-    else if (step < -7)
+    else if (step < -20)
     {
         digitalWrite(motorPins[motor].in1, LOW);
-        analogWrite(motorPins[motor].in2, map(-step, 0, 100, 0, MOTOR_MAX_POWER));
+        analogWrite(motorPins[motor].in2, map(-step, 0, 250, 0, MOTOR_MAX_POWER));
     }
     else
     {
