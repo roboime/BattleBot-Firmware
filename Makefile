@@ -29,13 +29,14 @@ EFUSE      := 0xFC
 #
 # compiling configs
 #
+REGISTERS := r3 r4 r5 r6 r7
 OPTRULE   := -O3 -fweb -frename-registers -flto -fno-fat-lto-objects
-COMFLAGS  := -MMD -mmcu=$(DEVICE) -DF_CPU=$(CLOCK)UL
+COMFLAGS  := -MMD -mmcu=$(DEVICE) -DF_CPU=$(CLOCK)UL $(addprefix --fixed-,$(REGISTERS))
 CCPPFLAGS := $(COMFLAGS) $(OPTRULE) -Wall -ffunction-sections -fdata-sections -Wno-main -Wno-volatile-register-var
 CFLAGS    := $(CCPPFLAGS) -std=gnu11
 CPPFLAGS  := $(CCPPFLAGS) -std=gnu++1z -fpermissive -fno-exceptions -fno-threadsafe-statics
 ASMFLAGS  := $(COMFLAGS) -x assembler-with-cpp
-LDFLAGS   := $(OPTRULE) -Wall -Wl,--gc-sections -mmcu=$(DEVICE)
+LDFLAGS   := $(OPTRULE) -fuse-linker-plugin $(addprefix --fixed-,$(REGISTERS)) -Wall -Wl,--gc-sections -mmcu=$(DEVICE)
 
 #
 # files to be compiled

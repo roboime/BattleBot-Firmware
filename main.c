@@ -14,6 +14,7 @@
 
 #include "default.h"
 
+#define BLINK_FRAMES 25
 volatile uint8_t flags = 0;
 
 void main()
@@ -76,16 +77,13 @@ void main()
 		// Loop principal
 		if (flags | EXECUTE_ENC)
 		{
+			static uint8_t frame_counter = 0;
+
 			flags &= (uint8_t)~EXECUTE_ENC;
 			input_read_enc();
-			
-			uint16_t encl = enc_left();
-			uint16_t encr = enc_right();
-			
-			uint8_t strt = 0xCF;
-			TX_VAR(strt);
-			tx_data(&encl, sizeof(uint16_t));
-			tx_data(&encr, sizeof(uint16_t));
+
+			led_set(frame_counter < BLINK_FRAMES);
+			if (++frame_counter == 2*BLINK_FRAMES) frame_counter = 0;
 		}
 		if (flags | EXECUTE_RECV)
 		{

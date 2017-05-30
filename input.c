@@ -11,41 +11,54 @@
 
 #include "default.h"
 
+#define curl0 "r3"
+#define curl1 "r4"
+#define curr0 "r5"
+#define curr1 "r6"
+#define overflow_count "r7"
+
 // interrupts dos encoders:
 
 // interrupt externo para ler o encoder esquerdo
-/*ISR (INT0_vect, ISR_NAKED)
+ISR (INT0_vect, ISR_NAKED)
 {
-	asm volatile("inc %0\n\t"
-	             "cpse %0, __zero_reg__\n\t"
-	             "dec %1\n\t"
-	             "inc %1\n\t"
-	             "reti"
-	             : "=r" (curl0), "=r" (curl1)
-	             : "0" (curl0), "1" (curl1));
+	asm volatile("in  __zero_reg__, 0x3F\n\t"
+	             "inc "curl0"\n\t"
+	             "brne 1f\n\t"
+	             "inc "curl1"\n"
+	             "1: out 0x3F, __zero_reg__\n\t"
+	             "eor __zero_reg__, __zero_reg__\n\t"
+	             "reti");
 }
 
 // interrupt externo para ler o encoder direito
 ISR (INT1_vect, ISR_NAKED)
 { 
-	asm volatile("inc %0\n\t"
-	             "cpse %0, __zero_reg__\n\t"
-	             "dec %1\n\t"
-	             "inc %1\n\t"
-	             "reti"
-	             : "=r" (curr0), "=r" (curr1)
-	             : "0" (curr0), "1" (curr1));
-}*/
+	asm volatile("in  __zero_reg__, 0x3F\n\t"
+	             "inc "curr0"\n\t"
+	             "brne 1f\n\t"
+	             "inc "curr1"\n"
+	             "1: out 0x3F, __zero_reg__\n\t"
+	             "eor __zero_reg__, __zero_reg__\n\t"
+	             "reti");
+}
 
-volatile uint8_t overflow_count = 0;
+// overflow to timer0, apenas para contagem de tempo
+ISR (TIMER0_OVF_vect, ISR_NAKED)
+{
+	asm volatile("in  __zero_reg__, 0x3F\n\t"
+	             "inc "overflow_count"\n\t"
+	             "out 0x3F, __zero_reg__\n\t"
+	             "eor __zero_reg__, __zero_reg__\n\t"
+	             "reti");
+}
+
+//volatile uint8_t overflow_count = 0;
 volatile uint8_t cur_recv_bit = 0, cur_flag = B100;
-volatile uint16_t cur_l = 0, cur_r = 0;
+//volatile uint16_t cur_l = 0, cur_r = 0;
 volatile uint16_t last_times[3][2];
 volatile uint8_t updates[3];
 static uint8_t last_read = 0;
-
-ISR (INT0_vect) { cur_l++; }
-ISR (INT1_vect) { cur_r++; }
 
 #define RECV_MID 375
 #define RECV_MIN 281
@@ -66,10 +79,10 @@ uint16_t avg_frames_r = 0;
 
 uint8_t cur_frame = 0;
 
+#define CLEARR(r) asm("eor "r", "r"")
+
 void input_init()
 {
-	overflow_count = 0;
-
 	cur_flag = B100;
 	for (uint8_t i = 0; i < 3; i++)
 	{
@@ -86,8 +99,11 @@ void input_init()
 		}
 	}
 	
-	cur_l = 0;
-	cur_r = 0;
+	CLEARR(curl0);
+	CLEARR(curl1);
+	CLEARR(curr0);
+	CLEARR(curr1);
+	CLEARR(overflow_count);
 	
 	for (uint8_t i = 0; i < ENC_FRAMES; i++)
 	{
@@ -96,28 +112,29 @@ void input_init()
 	}
 }
 
-inline void setreg(uint16_t* d, uint8_t r1, uint8_t r2)
-{
-	uint8_t* p = (uint8_t*)d;
-
-	*p++ = r1;
-	*p   = r2;
-}
-
 void input_read_enc()
 {
+	register unsigned char curl0_v asm(curl0);
+	register unsigned char curl1_v asm(curl1);
+	register unsigned char curr0_v asm(curr0);
+	register unsigned char curr1_v asm(curr1);
+
 	// Dá pra se virar com o interrupt ligado aqui, porque é ULTRA IMPORTANTE pegar todos
 	// os interrupts do encoder
 	avg_frames_l -= enc_frames_l[cur_frame];
-	enc_frames_l[cur_frame] = cur_l;
+	((uint8_t*)&enc_frames_l[cur_frame])[0] = curl0_v;
+	((uint8_t*)&enc_frames_l[cur_frame])[1] = curl1_v;
 	avg_frames_l += enc_frames_l[cur_frame];
 	
 	avg_frames_r -= enc_frames_r[cur_frame];
-	enc_frames_r[cur_frame] = cur_r;
+	((uint8_t*)&enc_frames_r[cur_frame])[0] = curr0_v;
+	((uint8_t*)&enc_frames_r[cur_frame])[1] = curr1_v;
 	avg_frames_r += enc_frames_r[cur_frame];
 	
-	cur_l = 0;
-	cur_r = 0;
+	CLEARR(curl0);
+	CLEARR(curr0);
+	CLEARR(curl1);
+	CLEARR(curr1);
 	
 	if (++cur_frame == ENC_FRAMES) cur_frame = 0;
 }
@@ -127,7 +144,12 @@ void input_read_recv()
 	// Aqui não dá pra deixar o interrupt ligado, mas a gente só desliga o do grupo C
 	PCICR &= ~_BV(PCIE1);
 	for (uint8_t i = 0; i < 3; i++)
-		if (updates[i]) recv_readings[i][cur_reading[i]] = last_times[i][1] - last_times[i][0];
+		if (updates[i])
+		{
+			recv_readings[i][cur_reading[i]] = last_times[i][1] - last_times[i][0];
+			last_times[i][0] = 0;
+			last_times[i][1] = 0;
+		}
 	PCICR |= _BV(PCIE1);
 	
 	// Li o que eu precisava, posso reabilitar os interrupts
@@ -184,29 +206,15 @@ uint16_t enc_right()
 	return avg_frames_r;
 }
 
-// overflow to timer0, apenas para contagem de tempo
-/*ISR (TIMER0_OVF_vect, ISR_NAKED)
-{
-	asm volatile("inc %0\n\t"
-	             "reti"
-	             : "=r" (overflow_count)
-	             : "0" (overflow_count));
-}*/
-ISR (TIMER0_OVF_vect) { overflow_count++; }
-
-// função ticks, para a contagem de tempo (1 tick = 64 ciclos)
-static inline uint16_t ticks()
-{
-    uint8_t m = overflow_count;
-    uint8_t t = TCNT0;
-    return (m << 8) | t;
-}
-
 // Interrupt do receptor
 ISR (PCINT1_vect)
 {
+	register unsigned char overflow_count_v asm(overflow_count);
+
 	wdt_reset();
-	uint16_t cur_ticks = ticks();
+	uint16_t cur_ticks;
+	((uint8_t*)&cur_ticks)[0] = TCNT0;
+	((uint8_t*)&cur_ticks)[1] = overflow_count_v;
 	uint8_t cur_read = (PINC & (cur_flag)) != 0;
 	
 	if (cur_read && cur_recv_bit == 0)

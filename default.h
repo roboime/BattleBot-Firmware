@@ -10,13 +10,6 @@
 // para o bom functionamento do programa
 //
 
-// É bom que esteja em um registrador, porque fica mais rápido
-//register volatile unsigned char curl0 asm("r3");
-//register volatile unsigned char curl1 asm("r4");
-//register volatile unsigned char curr0 asm("r5");
-//register volatile unsigned char curr1 asm("r6");
-//register volatile unsigned char overflow_count asm("r7");
-
 #include <avr/io.h>
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
@@ -44,5 +37,8 @@ void led_set(uint8_t on);
 void serial_init();
 void tx_data(const void* ptr, uint8_t sz);
 #define TX_VAR(v) tx_data(&v, sizeof(v))
+uint8_t rx_bytes_available();
+uint8_t rx_data(void* ptr, uint8_t sz);
+#define RX_VAR(v) rx_data(&v, sizeof(v))
 
 
