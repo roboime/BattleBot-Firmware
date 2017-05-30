@@ -15,6 +15,7 @@
 #include "default.h"
 
 #define BLINK_FRAMES 25
+#define HANDSHAKE_RX_BYTE 0x55
 volatile uint8_t flags = 0;
 
 void main()
@@ -84,6 +85,11 @@ void main()
 
 			led_set(frame_counter < BLINK_FRAMES);
 			if (++frame_counter == 2*BLINK_FRAMES) frame_counter = 0;
+			
+			// Detecta o handshake para o modo de configuração
+			uint8_t rx;
+			if (RX_VAR(rx) && rx == HANDSHAKE_RX_BYTE)
+				config_status();
 		}
 		if (flags | EXECUTE_RECV)
 		{

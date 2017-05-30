@@ -37,8 +37,18 @@ void led_set(uint8_t on);
 void serial_init();
 void tx_data(const void* ptr, uint8_t sz);
 #define TX_VAR(v) tx_data(&v, sizeof(v))
-uint8_t rx_bytes_available();
+uint8_t rx_byte_available();
 uint8_t rx_data(void* ptr, uint8_t sz);
+uint8_t rx_data_blocking(void* ptr, uint8_t sz);
 #define RX_VAR(v) rx_data(&v, sizeof(v))
+#define RX_VAR_BLOCKING(v) rx_data_blocking(&v, sizeof(v))
+
+typedef enum { left_kp, left_ki, left_kd, left_blend,
+	right_kp, right_ki, right_kd, right_blend,
+	enc_frames, recv_frames, num_cfgs } cfg_id;
+void config_init();
+void config_status();
+int16_t get_config(cfg_id id);
+
 
 
