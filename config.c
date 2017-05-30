@@ -10,6 +10,7 @@
 //
 
 #include "default.h"
+#include <avr/eeprom.h>
 
 #define ACK 0xAC
 #define ERROR_INVALID_COMMAND 0xE0
@@ -27,7 +28,61 @@
 #define TX_ERROR(code) do { uint8_t err = (code); TX_VAR(err); continue; } while (0)
 #define TX_ACK() do { uint8_t ack = ACK; TX_VAR(ack); } while (0)
 
+int16_t eeprom_configs[3][num_cfgs] EEMEM;
+int16_t eeprom_check[3] EEMEM;
+
 static int16_t config_vars[num_cfgs];
+
+// Checksum = 1*i1 + 2*i2 + 3*i3 + ... + n*in;
+inline static int16_t check_fun(int16_t values[num_cfgs])
+{
+	int16_t res = 0;
+	for (uint8_t i = 0; i < num_cfgs; i++)
+		res ^= (i+1) * values[i];
+	return res;
+}
+
+void config_init()
+{
+	// Lê da EEPROM três vezes, para minimizar o risco de leitura errada
+	int16_t config_copy[3][num_cfgs];
+	int16_t check[3];
+	
+	eeprom_read_block(config_copy, eeprom_configs, 3*num_cfgs*sizeof(int16_t));
+	eeprom_read_block(check, eeprom_check, 3*sizeof(int16_t));
+	
+	// Checksum simples, só para ver se deu alguma coisa
+	for (uint8_t j = 0; j < 3; j++)
+		if (check[j] != check_fun(config_copy[j]))
+		{
+			for (uint8_t i = 0; i < num_cfgs; i++) config_copy[j][i] = 0;
+			check[j] = 0;
+		}
+		
+	for (uint8_t i = 0; i < num_cfgs; i++)
+	{
+		uint8_t v0 = config_copy[0][i];
+		uint8_t v1 = config_copy[1][i];
+		uint8_t v2 = config_copy[2][i];
+		
+		if (v0 == v1 || v0 == v2) config_vars[i] = v0;
+		else if (v1 == v2) config_vars[i] = v1;
+		else config_vars[i] = 0;
+	}
+}
+
+inline static void config_save()
+{
+	// Checksum
+	int16_t check[3];
+	check[0] = check[1] = check[2] = check_fun(config_vars);
+	
+	// Escreve três vezes para haver baixo risco de corrupção de dados
+	eeprom_update_block(check, eeprom_check, 3*sizeof(int16_t));
+	
+	for (uint8_t i = 0; i < 3; i++)
+		eeprom_update_block(config_vars, eeprom_configs[i], num_cfgs*sizeof(int16_t));
+}
 
 inline static uint8_t valid_cfg(uint8_t id, int16_t var)
 {
@@ -40,11 +95,6 @@ inline static uint8_t valid_cfg(uint8_t id, int16_t var)
 	}
 } 
 
-void config_init()
-{
-	
-}
-
 void config_status()
 {
 	// Aqui a gente não precisa de interrupt
@@ -53,6 +103,7 @@ void config_status()
 	// Lê as configurações
 	for (;;)
 	{
+		led_set(1);
 		wdt_reset();
 		uint8_t size;
 		if (!RX_VAR(size)) continue;
@@ -64,6 +115,7 @@ void config_status()
 
 		// Se o computador demorar muito para mandar o
 		// frame, descartar
+		led_set(0);
 		uint8_t buffer[MAX_BUFFER_LENGTH];
 		if (!rx_data_blocking(buffer, size)) continue;
 		
@@ -103,7 +155,11 @@ void config_status()
 		else TX_ERROR(ERROR_INVALID_COMMAND);
 	}
 
+	// Salva os dados na EEPROM
+	config_save();
+
 	// Loop infinito para forçar o processador a resetar (watchdog)
+	led_set(1);
 	for (;;);
 }
 
