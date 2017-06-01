@@ -19,8 +19,14 @@
 #include "binaries.h"
 
 #define EXECUTE_ENC 1
-#define EXECUTE_RECV 2
-extern volatile uint8_t flags;
+#define RECV_AVAL0 2
+#define RECV_AVAL1 4
+#define RECV_AVAL2 8
+#define EXECUTE_RECV (RECV_AVAL0|RECV_AVAL1|RECV_AVAL2)
+#define flags GPIOR0
+
+// A gente usa a funçaão wdt_off() porque a wdt_disable() possui erros
+void wdt_off();
 
 void input_init();
 void input_read_enc();
@@ -43,12 +49,18 @@ uint8_t rx_data_blocking(void* ptr, uint8_t sz);
 #define RX_VAR(v) rx_data(&v, sizeof(v))
 #define RX_VAR_BLOCKING(v) rx_data_blocking(&v, sizeof(v))
 
-typedef enum { left_kp, left_ki, left_kd, left_blend,
-	right_kp, right_ki, right_kd, right_blend,
-	enc_frames, recv_frames, num_cfgs } cfg_id;
+typedef struct
+{
+	uint32_t left_kp, left_ki, left_kd;
+	uint32_t right_kp, right_ki, right_kd;
+	uint8_t left_blend, right_blend;
+	uint8_t enc_frames, recv_samples;
+} config_struct;
+#define num_cfgs 10
+
 void config_init();
 void config_status();
-int16_t get_config(cfg_id id);
+config_struct* get_config();
 
 
 

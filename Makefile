@@ -22,8 +22,8 @@ DEVICE     := atmega328p
 CLOCK      := 16000000
 PROGRAMMER := stk500v1
 BAUD       := 19200
-LFUSE      := 0xE7
-HFUSE      := 0xD1
+LFUSE      := 0xD7
+HFUSE      := 0xD9
 EFUSE      := 0xFC
 
 #

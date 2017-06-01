@@ -14,9 +14,12 @@
 
 #include "default.h"
 
-#define BLINK_FRAMES 14
+#define BLINK_FRAMES 8
 #define HANDSHAKE_RX_BYTE 0x55
-volatile uint8_t flags = 0;
+
+// Isso aqui tem que ser executado o mais rápido possível (antes do main)
+void pre_main() __attribute__((naked,used,section(".init3")));
+void pre_main() { wdt_off(); }
 
 void main()
 {
@@ -25,12 +28,12 @@ void main()
 
 	// Configuração das direções das portas:
 	DDRB = B00000110; // grupo B: motor direito, encoder direito
-	DDRC = B00100000; // grupo C: LED de apoio, receptor
+	DDRC = B00000001; // grupo C: LED de apoio, receptor
 	DDRD = B01100000; // grupo D: motor esquerdo, encoder esquerdo, RX/TX
 	
 	// Configuração do estado inicial e resistores de pullup
 	PORTB = B00000001; // grupo B: pullup na DIP switch
-	PORTC = B00100000; // grupo C: pullup nos pinos desconectados
+	PORTC = B00000010; // grupo C: pullup nos pinos desconectados
 	PORTD = B10010000; // grupo D: pullup na DIP switch
 	
 	// Configuração dos interrupts de mudança de pino
@@ -62,9 +65,9 @@ void main()
 	PRR = B11000101;
 
 	// Zera todos os dados usados pelos módulos de input, output, serial e config
-	input_init();
 	serial_init();
-	//config_init();
+	config_init();
+	input_init();
 	flags = 0;
 	
 	// Configuração do timer de watchdog, para resetar o microprocessador caso haja alguma falha
@@ -77,22 +80,22 @@ void main()
 	for(;;)
 	{
 		// Loop principal
-		if (flags | EXECUTE_ENC)
+		if (flags & EXECUTE_ENC)
 		{
 			static uint8_t frame_counter = 0;
 
 			flags &= (uint8_t)~EXECUTE_ENC;
 			input_read_enc();
 
-			led_set(1);
+			led_set(frame_counter < BLINK_FRAMES);
 			if (++frame_counter == 2*BLINK_FRAMES) frame_counter = 0;
 			
 			// Detecta o handshake para o modo de configuração
-			//uint8_t rx;
-			//if (RX_VAR(rx) && rx == HANDSHAKE_RX_BYTE)
-			//	config_status();
+			uint8_t rx;
+			if (RX_VAR(rx) && rx == HANDSHAKE_RX_BYTE)
+				config_status();
 		}
-		if (flags | EXECUTE_RECV)
+		if (flags & EXECUTE_RECV)
 		{
 			input_read_recv();
 			
@@ -102,10 +105,23 @@ void main()
 
 			motor_set_power_left(ch1-ch0);
 			motor_set_power_right(ch1+ch0);
-			led_set(1);
 		}
 		
 		// Coloca o uC em modo de baixo consumo de energia
 		sleep_mode();
 	}
+}
+
+// Essa função foi escrita porque a wdt_disable() original possui erros de operação
+void wdt_off()
+{
+	uint8_t oldSREG = SREG;
+	cli();
+	
+	wdt_reset();
+	MCUSR = 0;
+	WDTCSR |= _BV(WDCE) | _BV(WDE); // "Desativa" a proteção de leitura
+	WDTCSR = 0;                     // Desliga o watchdog
+	
+	SREG = oldSREG;
 }

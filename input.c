@@ -66,12 +66,12 @@ static uint8_t last_read = 0;
 #define RECV_MULT 43
 #define RECV_DENOM 16
 
-#define RECV_SAMPLES 3
+#define RECV_SAMPLES 31
 uint16_t recv_readings[3][RECV_SAMPLES];
 uint8_t cur_order[3][RECV_SAMPLES];
 uint8_t cur_reading[3];
 
-#define ENC_FRAMES 8
+#define ENC_FRAMES 32
 uint16_t enc_frames_l[ENC_FRAMES];
 uint16_t avg_frames_l = 0;
 uint16_t enc_frames_r[ENC_FRAMES];
@@ -92,7 +92,7 @@ void input_init()
 		cur_reading[i] = 0;
 		updates[i] = 0;
 		
-		for (uint8_t j = 0; j < RECV_SAMPLES; j++)
+		for (uint8_t j = 0; j < get_config()->recv_samples; j++)
 		{
 			recv_readings[i][j] = 0;
 			cur_order[i][j] = j;
@@ -105,7 +105,7 @@ void input_init()
 	CLEARR(curr1);
 	CLEARR(overflow_count);
 	
-	for (uint8_t i = 0; i < ENC_FRAMES; i++)
+	for (uint8_t i = 0; i < get_config()->enc_frames; i++)
 	{
 		enc_frames_l[i] = 0;
 		enc_frames_r[i] = 0;
@@ -136,7 +136,7 @@ void input_read_enc()
 	CLEARR(curl1);
 	CLEARR(curr1);
 	
-	if (++cur_frame == ENC_FRAMES) cur_frame = 0;
+	if (++cur_frame == get_config()->enc_frames) cur_frame = 0;
 }
 
 void input_read_recv()
@@ -144,7 +144,7 @@ void input_read_recv()
 	// Aqui não dá pra deixar o interrupt ligado, mas a gente só desliga o do grupo C
 	PCICR &= ~_BV(PCIE1);
 	for (uint8_t i = 0; i < 3; i++)
-		if (updates[i])
+		if (flags & (RECV_AVAL0 << i))
 		{
 			recv_readings[i][cur_reading[i]] = last_times[i][1] - last_times[i][0];
 			last_times[i][0] = 0;
@@ -156,10 +156,10 @@ void input_read_recv()
 	// Bubblesort nas amostras
 	for (uint8_t i = 0; i < 3; i++)
 	{
-		if (!updates[i]) continue;
+		if (!(flags & (RECV_AVAL0 << i))) continue;
 	
 		uint8_t k = 0;
-		for (; k < RECV_SAMPLES; k++)
+		for (; k < get_config()->recv_samples; k++)
 			if (cur_order[i][k] == cur_reading[i]) break;
 		
 		while (k > 0 && recv_readings[i][cur_order[i][k]] <= recv_readings[i][cur_order[i][k-1]])
@@ -170,7 +170,7 @@ void input_read_recv()
 			k--;
 		}
 		
-		while (k < RECV_SAMPLES-1 && recv_readings[i][cur_order[i][k]] >= recv_readings[i][cur_order[i][k+1]])
+		while (k < get_config()->recv_samples-1 && recv_readings[i][cur_order[i][k]] >= recv_readings[i][cur_order[i][k+1]])
 		{
 			cur_order[i][k] ^= cur_order[i][k+1];
 			cur_order[i][k+1] ^= cur_order[i][k];
@@ -178,14 +178,14 @@ void input_read_recv()
 			k++;
 		}
 
-		if (++cur_reading[i] == RECV_SAMPLES) cur_reading[i] = 0;
-		updates[i] = 0;
+		if (++cur_reading[i] == get_config()->recv_samples) cur_reading[i] = 0;
+		flags &= ~(RECV_AVAL0 << i);
 	}
 }
 
 int16_t recv_get_ch(uint8_t ch)
 {
-	uint16_t recv = recv_readings[ch][cur_order[ch][RECV_SAMPLES/2]];
+	uint16_t recv = recv_readings[ch][cur_order[ch][get_config()->recv_samples/2]];
 	//return recv;
 	
 	if (recv == 0) return 0;
@@ -227,7 +227,12 @@ ISR (PCINT1_vect)
 	else if (!cur_read && last_read)
 	{
 		last_times[cur_recv_bit][1] = cur_ticks;
-		updates[cur_recv_bit] = 1;
+		switch (cur_recv_bit)
+		{
+			case 0: flags |= RECV_AVAL0; break;
+			case 1: flags |= RECV_AVAL1; break;
+			case 2: flags |= RECV_AVAL2; break;
+		}
 		
 		cur_recv_bit++;
 		cur_flag <<= 1;

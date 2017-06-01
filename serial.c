@@ -22,7 +22,7 @@ void serial_init()
 {
 
 	// 8 bits, com bit de paridade par
-	UCSR0C = _BV(UPM01) | _BV(USBS0) | _BV(UCSZ01) | _BV(UCSZ00);
+	UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
 	UBRR0 = BAUD_PRESCALE;
 
 	// Habilita a porta serial para transmissão e recepção
