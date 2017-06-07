@@ -23,7 +23,7 @@ CLOCK      := 16000000
 PROGRAMMER := stk500v1
 BAUD       := 19200
 LFUSE      := 0xD7
-HFUSE      := 0xD9
+HFUSE      := 0xD1
 EFUSE      := 0xFC
 
 #
@@ -68,6 +68,7 @@ out.hex: out.elf
 #
 out.elf: $(OBJECTS)
 	$(LD) $(LDFLAGS) -o $@ $^
+	@./size.py
 
 out.hex: out.elf
 	$(OBJCOPY) -O ihex -R .eeprom $< $@

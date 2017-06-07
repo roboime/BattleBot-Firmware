@@ -20,8 +20,7 @@
 // comunicação via RX/TX
 void serial_init()
 {
-
-	// 8 bits, com bit de paridade par
+	// 8 bits, sem paridade
 	UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
 	UBRR0 = BAUD_PRESCALE;
 
@@ -39,7 +38,6 @@ void tx_data(const void* ptr, uint8_t sz)
 		while (!(UCSR0A & _BV(UDRE0)));
 		UDR0 = cptr[i];
 	}
-
 }
 
 uint8_t rx_byte_available()

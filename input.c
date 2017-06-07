@@ -63,8 +63,11 @@ static uint8_t last_read = 0;
 #define RECV_MID 375
 #define RECV_MIN 281
 #define RECV_MAX 469
-#define RECV_MULT 43
+#define RECV_MULT 45
 #define RECV_DENOM 16
+
+// TODO: mudar esse parâmetro quando passar p/ o robô real
+#define ENC_DIVIDER 3
 
 #define RECV_SAMPLES 31
 uint16_t recv_readings[3][RECV_SAMPLES];
@@ -198,12 +201,12 @@ int16_t recv_get_ch(uint8_t ch)
 
 uint16_t enc_left()
 {
-	return avg_frames_l;
+	return avg_frames_l / get_config()->enc_frames / ENC_DIVIDER;
 }
 
 uint16_t enc_right()
 {
-	return avg_frames_r;
+	return avg_frames_r / get_config()->enc_frames / ENC_DIVIDER;
 }
 
 // Interrupt do receptor

@@ -51,8 +51,8 @@ uint8_t rx_data_blocking(void* ptr, uint8_t sz);
 
 typedef struct
 {
-	uint32_t left_kp, left_ki, left_kd;
-	uint32_t right_kp, right_ki, right_kd;
+	uint16_t left_kp, left_ki, left_kd;    // 4.12
+	uint16_t right_kp, right_ki, right_kd; // 4.12
 	uint8_t left_blend, right_blend;
 	uint8_t enc_frames, recv_samples;
 } config_struct;

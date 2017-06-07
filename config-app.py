@@ -5,12 +5,12 @@ import sys
 import array
 
 cfgs = {
-	"left-kp":      [0, 4, 16777216.0, 0.0, 256.0, lambda _: True],
-	"left-ki":      [1, 4, 16777216.0, 0.0, 256.0, lambda _: True],
-	"left-kd":      [2, 4, 16777216.0, 0.0, 256.0, lambda _: True],
-	"right-kp":     [3, 4, 16777216.0, 0.0, 256.0, lambda _: True],
-	"right-ki":     [4, 4, 16777216.0, 0.0, 256.0, lambda _: True],
-	"right-kd":     [5, 4, 16777216.0, 0.0, 256.0, lambda _: True],
+	"left-kp":      [0, 2, 4096.0, 0.0, 16.0, lambda _: True],
+	"left-ki":      [1, 2, 4096.0, 0.0, 16.0, lambda _: True],
+	"left-kd":      [2, 2, 4096.0, 0.0, 16.0, lambda _: True],
+	"right-kp":     [3, 2, 4096.0, 0.0, 16.0, lambda _: True],
+	"right-ki":     [4, 2, 4096.0, 0.0, 16.0, lambda _: True],
+	"right-kd":     [5, 2, 4096.0, 0.0, 16.0, lambda _: True],
 	"left-blend":   [6, 1, 255.0, 0.0, 1.0, lambda _: True],
 	"right-blend":  [7, 1, 255.0, 0.0, 1.0, lambda _: True],
 	"enc-frames":   [8, 1, 1.0, 0.0, 32.0, lambda x: int(x) == x],

@@ -34,7 +34,7 @@ uint8_t EEMEM eeprom_check[3];
 
 static config_struct configs;
 
-const config_struct PROGMEM default_config = { 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 255, 255, 8, 5 };
+const config_struct PROGMEM default_config = { 0x0800, 0x0000, 0x0000, 0x0800, 0x0000, 0x0000, 255, 255, 8, 5 };
 
 // Funções para leitura e escrita de EEPROM
 void read_eeprom(void* dst, const void* src, uint8_t sz)
@@ -149,7 +149,6 @@ inline static void config_save()
 	while (EECR & _BV(EEPE));
 }
 
-
 // Tamanho de cada elemento na struct de configuração (bem que podia ser gerado automaticamente :/)
 inline static uint8_t cfg_size(uint8_t id)
 {
@@ -188,6 +187,7 @@ inline static void* cfg_ptr(uint8_t id)
 	}
 }
 
+void config_status() __attribute__((noreturn));
 void config_status()
 {
 	// Aqui a gente não precisa de interrupt
