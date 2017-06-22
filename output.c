@@ -15,7 +15,7 @@
 #define MOTOR_MIN_POWER 8
 #define CLAMP(p,m) do { if (p > (m)) p = (m); else if (p < -(m)) p = -(m); } while (0)
 
-void motor_set_power_left(int16_t power)
+void motor_set_power(int16_t power)
 {
 	CLAMP(power, MOTOR_MAX_POWER);
 	

@@ -29,7 +29,7 @@ EFUSE      := 0xFC
 #
 # compiling configs
 #
-REGISTERS := r3 r4 r5 r6 r7
+REGISTERS := r3 r4 r5
 OPTRULE   := -O3 -fweb -frename-registers -flto -fno-fat-lto-objects
 COMFLAGS  := -MMD -mmcu=$(DEVICE) -DF_CPU=$(CLOCK)UL $(addprefix --fixed-,$(REGISTERS))
 CCPPFLAGS := $(COMFLAGS) $(OPTRULE) -Wall -ffunction-sections -fdata-sections -Wno-main -Wno-volatile-register-var

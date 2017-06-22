@@ -14,6 +14,8 @@
 #define UART_BAUD_RATE 19200UL
 #define BAUD_PRESCALE ((F_CPU + UART_BAUD_RATE * 8L) / (UART_BAUD_RATE * 16L) - 1)
 
+#define BAUD_PRESCALE_9600 ((F_CPU + 9600UL * 8L) / (9600UL * 16L) - 1)
+
 #define RX_TIMEOUT 5600
 
 // Função para inicializar o hardware USART para a
@@ -64,7 +66,9 @@ uint8_t rx_data(void* ptr, uint8_t sz)
 
 uint8_t rx_data_blocking(void* ptr, uint8_t sz)
 {
-	while (!(UCSR0A & _BV(RXC0)));
+	uint16_t timeout = RX_TIMEOUT;
+	while (!(UCSR0A & _BV(RXC0)))
+		if (timeout-- == 0) return 0;
 	return rx_data(ptr, sz);
 }
 

@@ -18,6 +18,7 @@
 #define ERROR_INVALID_PARAMETERS 0xE2
 #define ERROR_INVALID_VALUE 0xE3
 #define ERROR_BUFFER_TOO_LONG 0xE4
+#define ERROR_TIMEOUT 0xE5
 
 #define READ_CHUNK 0x00
 #define WRITE_CHUNK 0x30
@@ -79,13 +80,13 @@ void update_eeprom(void* dst, const void* src, uint8_t sz)
 // memcpy
 void* memcpy(void* dst, const void* src, size_t size);
 
-// Checksum = i1 ^ i2 ^ ... ^in;
+// Checksum = 1*i1 ^ 2*i2 ^ ... ^ n*in;
 inline static uint8_t check_fun(const config_struct *cfg)
 {
 	int16_t res = 0;
 	const uint8_t* values = (const uint8_t*)cfg;
 	for (uint8_t i = 0; i < sizeof(cfg); i++)
-		res ^= values[i];
+		res ^= (i+1) * values[i];
 	return res;
 }
 
@@ -119,16 +120,13 @@ void config_init()
 	else configs.par = 0;                       \
 } while (0)
 	
-	VOTE_PARAM(left_kp);
-	VOTE_PARAM(left_ki);
-	VOTE_PARAM(left_kd);
-	VOTE_PARAM(right_kp);
-	VOTE_PARAM(right_ki);
-	VOTE_PARAM(right_kd);
-	VOTE_PARAM(left_blend);
-	VOTE_PARAM(right_blend);
+	VOTE_PARAM(kp);
+	VOTE_PARAM(ki);
+	VOTE_PARAM(kd);
+	VOTE_PARAM(pid_blend);
 	VOTE_PARAM(enc_frames);
 	VOTE_PARAM(recv_samples);
+	VOTE_PARAM(right_board);
 	
 #undef VOTE_PARAM
 }
@@ -154,16 +152,13 @@ inline static uint8_t cfg_size(uint8_t id)
 {
 	switch (id)
 	{
-		case 0: return sizeof(configs.left_kp);
-		case 1: return sizeof(configs.left_ki);
-		case 2: return sizeof(configs.left_kd);
-		case 3: return sizeof(configs.right_kp);
-		case 4: return sizeof(configs.right_ki);
-		case 5: return sizeof(configs.right_kd);
-		case 6: return sizeof(configs.left_blend);
-		case 7: return sizeof(configs.right_blend);
-		case 8: return sizeof(configs.enc_frames);
-		case 9: return sizeof(configs.recv_samples);
+		case 0: return sizeof(configs.kp);
+		case 1: return sizeof(configs.ki);
+		case 2: return sizeof(configs.kd);
+		case 3: return sizeof(configs.pid_blend);
+		case 4: return sizeof(configs.enc_frames);
+		case 5: return sizeof(configs.recv_samples);
+		case 6: return sizeof(configs.right_board);
 		default: return 0;
 	}
 }
@@ -173,16 +168,13 @@ inline static void* cfg_ptr(uint8_t id)
 {
 	switch (id)
 	{
-		case 0: return &configs.left_kp;
-		case 1: return &configs.left_ki;
-		case 2: return &configs.left_kd;
-		case 3: return &configs.right_kp;
-		case 4: return &configs.right_ki;
-		case 5: return &configs.right_kd;
-		case 6: return &configs.left_blend;
-		case 7: return &configs.right_blend;
-		case 8: return &configs.enc_frames;
-		case 9: return &configs.recv_samples;
+		case 0: return &configs.kp;
+		case 1: return &configs.ki;
+		case 2: return &configs.kd;
+		case 3: return &configs.pid_blend;
+		case 4: return &configs.enc_frames;
+		case 5: return &configs.recv_samples;
+		case 6: return &configs.right_board;
 		default: return 0;
 	}
 }
@@ -222,7 +214,8 @@ void config_status()
 		// Se o computador demorar muito para mandar o
 		// frame, descartar
 		uint8_t buffer[MAX_BUFFER_LENGTH];
-		if (!rx_data_blocking(buffer, size)) goto reinit;
+		if (!rx_data_blocking(buffer, size))
+			TX_ERROR(ERROR_TIMEOUT);
 		
 		// Comando de leitura
 		if ((buffer[0] & 0xF0) == READ_CHUNK)
@@ -240,10 +233,10 @@ void config_status()
 		{
 			uint8_t cfg = buffer[0] & 0x0F;
 		
-			if (size < sizeof(uint8_t) + cfg_size(cfg))
-				TX_ERROR(ERROR_INVALID_PARAMETERS);
 			if (cfg >= num_cfgs)
 				TX_ERROR(ERROR_INVALID_VARIABLE);
+			if (size < sizeof(uint8_t) + cfg_size(cfg))
+				TX_ERROR(ERROR_INVALID_PARAMETERS);
 			
 			memcpy(cfg_ptr(cfg), &buffer[1], cfg_size(cfg));
 			TX_ACK();

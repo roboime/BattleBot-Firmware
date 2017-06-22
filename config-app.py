@@ -4,17 +4,17 @@ import serial
 import sys
 import array
 
+def always(_):
+	return True
+
 cfgs = {
-	"left-kp":      [0, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"left-ki":      [1, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"left-kd":      [2, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"right-kp":     [3, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"right-ki":     [4, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"right-kd":     [5, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"left-blend":   [6, 1, 255.0, 0.0, 1.0, lambda _: True],
-	"right-blend":  [7, 1, 255.0, 0.0, 1.0, lambda _: True],
-	"enc-frames":   [8, 1, 1.0, 0.0, 32.0, lambda x: int(x) == x],
-	"recv-samples": [9, 1, 1.0, 0.0, 31.0, lambda x: int(x) == x and int(x % 2) == 1]
+	"kp":           [0, 2, 256.0, 0.0, 256.0, always],
+	"ki":           [1, 2, 256.0, 0.0, 256.0, always],
+	"kd":           [2, 2, 256.0, 0.0, 256.0, always],
+	"pid-blend":    [3, 1, 255.0, 0.0, 1.0, always],
+	"enc-frames":   [4, 1, 1.0, 0.0, 32.0, lambda x: int(x) == x],
+	"recv-samples": [5, 1, 1.0, 0.0, 31.0, lambda x: int(x) == x and int(x % 2) == 1],
+	"right-board":  [6, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x]
 }
 write_offset = 0x30
 ack = 0xac
