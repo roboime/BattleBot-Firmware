@@ -35,7 +35,7 @@ uint8_t EEMEM eeprom_check[3];
 
 static config_struct configs;
 
-const config_struct PROGMEM default_config = { 0x0800, 0x0000, 0x0000, 0x0800, 0x0000, 0x0000, 255, 255, 8, 5 };
+const config_struct PROGMEM default_config = { 0x0800, 0x0000, 0x0000, 255, 8, 5, 0 };
 
 // Funções para leitura e escrita de EEPROM
 void read_eeprom(void* dst, const void* src, uint8_t sz)

@@ -26,7 +26,7 @@ register volatile uint8_t overflow_count_v asm(overflow_count);
 ISR (INT0_vect)
 {
 	cur0_v++;
-	if (curl0_v == 0) cur1_v++;
+	if (cur0_v == 0) cur1_v++;
 }
 
 // overflow to timer0, apenas para contagem de tempo
@@ -166,7 +166,7 @@ int16_t recv_get_ch(uint8_t ch)
 
 uint16_t enc_value()
 {
-	return avg_frames_l / get_config()->enc_frames;
+	return avg_frames / get_config()->enc_frames;
 }
 
 // Interrupt do receptor
