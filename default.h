@@ -16,13 +16,18 @@
 #include <avr/wdt.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "binaries.h"
+
+#define CLAMP(p,m) do { if (p > (m)) p = (m); else if (p < -(m)) p = -(m); } while (0)
 
 #define EXECUTE_ENC 1
 #define RECV_AVAL0 2
 #define RECV_AVAL1 4
 #define RECV_AVAL2 8
-#define EXECUTE_RECV (RECV_AVAL0|RECV_AVAL1|RECV_AVAL2)
+#define RECV_AVAL3 16
+#define TWI_PREV_START 32
+#define EXECUTE_RECV (RECV_AVAL0|RECV_AVAL1|RECV_AVAL2|RECV_AVAL3)
 #define flags GPIOR0
 
 // A gente usa a funçaão wdt_off() porque a wdt_disable() possui erros
@@ -48,11 +53,23 @@ uint8_t rx_data(void* ptr, uint8_t sz);
 uint8_t rx_data_blocking(void* ptr, uint8_t sz);
 #define RX_VAR(v) rx_data(&v, sizeof(v))
 #define RX_VAR_BLOCKING(v) rx_data_blocking(&v, sizeof(v))
+void rx_flush();
+
+void lcd_init();
+void lcd_clear();
+void lcd_write_chars(uint8_t r, uint8_t c, const char *data, uint8_t size);
+#define LCD_WRITE_STR(r,c,str) lcd_write_chars((r),(c),(str),strlen(str))
+void lcd_write_int16(uint8_t r, uint8_t c, int16_t value);
+
+void twi_init();
+uint8_t twi_cmd_ready(uint8_t command);
+uint8_t twi_read(uint8_t address, volatile void* read_dest, uint8_t size);
+uint8_t twi_write(uint8_t address, const void* write_dest, uint8_t size);
 
 typedef struct
 {
-	uint16_t left_kp, left_ki, left_kd;    // 4.12
-	uint16_t right_kp, right_ki, right_kd; // 4.12
+	uint16_t left_kp, left_ki, left_kd;    // 8.8
+	uint16_t right_kp, right_ki, right_kd; // 8.8
 	uint8_t left_blend, right_blend;
 	uint8_t enc_frames, recv_samples;
 } config_struct;

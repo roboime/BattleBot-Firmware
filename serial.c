@@ -67,4 +67,3 @@ uint8_t rx_data_blocking(void* ptr, uint8_t sz)
 	while (!(UCSR0A & _BV(RXC0)));
 	return rx_data(ptr, sz);
 }
-

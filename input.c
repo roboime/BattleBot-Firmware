@@ -17,47 +17,37 @@
 #define curr1 "r6"
 #define overflow_count "r7"
 
-// interrupts dos encoders:
+register unsigned char curl0_v asm(curl0);
+register unsigned char curl1_v asm(curl1);
+register unsigned char curr0_v asm(curr0);
+register unsigned char curr1_v asm(curr1);
+register unsigned char overflow_count_v asm(overflow_count);
 
 // interrupt externo para ler o encoder esquerdo
-ISR (INT0_vect, ISR_NAKED)
+ISR (INT0_vect)
 {
-	asm volatile("in  __zero_reg__, 0x3F\n\t"
-	             "inc "curl0"\n\t"
-	             "brne 1f\n\t"
-	             "inc "curl1"\n"
-	             "1: out 0x3F, __zero_reg__\n\t"
-	             "eor __zero_reg__, __zero_reg__\n\t"
-	             "reti");
+	curl0_v++;
+	if (curl0_v == 0) curl1_v++;
 }
 
 // interrupt externo para ler o encoder direito
-ISR (INT1_vect, ISR_NAKED)
+ISR (INT1_vect)
 { 
-	asm volatile("in  __zero_reg__, 0x3F\n\t"
-	             "inc "curr0"\n\t"
-	             "brne 1f\n\t"
-	             "inc "curr1"\n"
-	             "1: out 0x3F, __zero_reg__\n\t"
-	             "eor __zero_reg__, __zero_reg__\n\t"
-	             "reti");
+	curr0_v++;
+	if (curr0_v == 0) curr1_v++;
 }
 
 // overflow to timer0, apenas para contagem de tempo
-ISR (TIMER0_OVF_vect, ISR_NAKED)
+ISR (TIMER0_OVF_vect)
 {
-	asm volatile("in  __zero_reg__, 0x3F\n\t"
-	             "inc "overflow_count"\n\t"
-	             "out 0x3F, __zero_reg__\n\t"
-	             "eor __zero_reg__, __zero_reg__\n\t"
-	             "reti");
+	overflow_count_v++;
 }
 
 //volatile uint8_t overflow_count = 0;
 volatile uint8_t cur_recv_bit = 0, cur_flag = B100;
 //volatile uint16_t cur_l = 0, cur_r = 0;
-volatile uint16_t last_times[3][2];
-volatile uint8_t updates[3];
+volatile uint16_t last_times[4][2];
+volatile uint8_t updates[4];
 static uint8_t last_read = 0;
 
 #define RECV_MID 375
@@ -70,9 +60,9 @@ static uint8_t last_read = 0;
 #define ENC_DIVIDER 3
 
 #define RECV_SAMPLES 31
-uint16_t recv_readings[3][RECV_SAMPLES];
-uint8_t cur_order[3][RECV_SAMPLES];
-uint8_t cur_reading[3];
+uint16_t recv_readings[4][RECV_SAMPLES];
+uint8_t cur_order[4][RECV_SAMPLES];
+uint8_t cur_reading[4];
 
 #define ENC_FRAMES 32
 uint16_t enc_frames_l[ENC_FRAMES];
@@ -87,7 +77,7 @@ uint8_t cur_frame = 0;
 void input_init()
 {
 	cur_flag = B100;
-	for (uint8_t i = 0; i < 3; i++)
+	for (uint8_t i = 0; i < 4; i++)
 	{
 		last_times[i][0] = 0;
 		last_times[i][1] = 0;
@@ -117,11 +107,6 @@ void input_init()
 
 void input_read_enc()
 {
-	register unsigned char curl0_v asm(curl0);
-	register unsigned char curl1_v asm(curl1);
-	register unsigned char curr0_v asm(curr0);
-	register unsigned char curr1_v asm(curr1);
-
 	// Dá pra se virar com o interrupt ligado aqui, porque é ULTRA IMPORTANTE pegar todos
 	// os interrupts do encoder
 	avg_frames_l -= enc_frames_l[cur_frame];
@@ -146,7 +131,7 @@ void input_read_recv()
 {
 	// Aqui não dá pra deixar o interrupt ligado, mas a gente só desliga o do grupo C
 	PCICR &= ~_BV(PCIE1);
-	for (uint8_t i = 0; i < 3; i++)
+	for (uint8_t i = 0; i < 4; i++)
 		if (flags & (RECV_AVAL0 << i))
 		{
 			recv_readings[i][cur_reading[i]] = last_times[i][1] - last_times[i][0];
@@ -157,7 +142,7 @@ void input_read_recv()
 	
 	// Li o que eu precisava, posso reabilitar os interrupts
 	// Bubblesort nas amostras
-	for (uint8_t i = 0; i < 3; i++)
+	for (uint8_t i = 0; i < 4; i++)
 	{
 		if (!(flags & (RECV_AVAL0 << i))) continue;
 	
@@ -201,19 +186,17 @@ int16_t recv_get_ch(uint8_t ch)
 
 uint16_t enc_left()
 {
-	return avg_frames_l / get_config()->enc_frames / ENC_DIVIDER;
+	return avg_frames_l / get_config()->enc_frames;
 }
 
 uint16_t enc_right()
 {
-	return avg_frames_r / get_config()->enc_frames / ENC_DIVIDER;
+	return avg_frames_r / get_config()->enc_frames;
 }
 
 // Interrupt do receptor
 ISR (PCINT1_vect)
 {
-	register unsigned char overflow_count_v asm(overflow_count);
-
 	wdt_reset();
 	uint16_t cur_ticks;
 	((uint8_t*)&cur_ticks)[0] = TCNT0;
@@ -224,9 +207,7 @@ ISR (PCINT1_vect)
 		flags |= EXECUTE_ENC;
 	
 	if (cur_read && !last_read)
-	{
 		last_times[cur_recv_bit][0] = cur_ticks;
-	}
 	else if (!cur_read && last_read)
 	{
 		last_times[cur_recv_bit][1] = cur_ticks;
@@ -235,12 +216,13 @@ ISR (PCINT1_vect)
 			case 0: flags |= RECV_AVAL0; break;
 			case 1: flags |= RECV_AVAL1; break;
 			case 2: flags |= RECV_AVAL2; break;
+			case 3: flags |= RECV_AVAL3; break;
 		}
 		
 		cur_recv_bit++;
 		cur_flag <<= 1;
 		
-		if (cur_recv_bit == 3)
+		if (cur_recv_bit == 4)
 		{
 			cur_recv_bit = 0;
 			cur_flag = B100;

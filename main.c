@@ -42,17 +42,17 @@ void main()
 	cli();
 
 	// Configuração das direções das portas:
-	DDRB = B00000110; // grupo B: motor direito, encoder direito
-	DDRC = B00000001; // grupo C: LED de apoio, receptor
-	DDRD = B01100000; // grupo D: motor esquerdo, encoder esquerdo, RX/TX
+	DDRB = B00111111; // grupo B: motor direito, encoder direito
+	DDRC = B00000000; // grupo C: LED de apoio, receptor
+	DDRD = B11110000; // grupo D: motor esquerdo, encoder esquerdo, RX/TX
 	
 	// Configuração do estado inicial e resistores de pullup
-	PORTB = B00000001; // grupo B: pullup na DIP switch
-	PORTC = B00000010; // grupo C: pullup nos pinos desconectados
-	PORTD = B10010000; // grupo D: pullup na DIP switch
+	PORTB = B00000000; // grupo B: pullup na DIP switch
+	PORTC = B00000000; // grupo C: pullup nos pinos desconectados
+	PORTD = B00000000; // grupo D: pullup na DIP switch
 	
 	// Configuração dos interrupts de mudança de pino
-	PCMSK1 = B00011100; // grupo C: receptor
+	PCMSK1 = B00111100; // grupo C: receptor
 	PCICR = B010; // habilita os três interrupts
 
 	// Configuração dos interrupts externos para a leitura dos encoders
@@ -102,6 +102,12 @@ void main()
 				config_status();
 			}
 	}
+	
+	lcd_init();
+	LCD_WRITE_STR(0,0,"LP:");
+	LCD_WRITE_STR(1,0,"RP:");
+	LCD_WRITE_STR(0,8,"LS:");
+	LCD_WRITE_STR(1,8,"RS:");
 
 	// Habilita interrupts de novo
 	sei();
@@ -120,9 +126,9 @@ void main()
 			led_set(frame_counter < BLINK_FRAMES);
 			if (++frame_counter == 2*BLINK_FRAMES) frame_counter = 0;
 			
-			// Controle do PID: enc_left() e enc_right 16.0()
-			int32_t enc_l = (int32_t)enc_left() << 16;   // enc_l 16.16
-			int32_t enc_r = (int32_t)enc_right() << 16;  // enc_r 16.16
+			// Controle do PID: enc_left() e enc_right() 16.0
+			int32_t enc_l = (int32_t)SGN(cur_out_l, enc_left()) << 16;   // enc_l 16.16
+			int32_t enc_r = (int32_t)SGN(cur_out_r, enc_right()) << 16;  // enc_r 16.16
 			
 			// PID do motor esquerdo
 			pid_control(enc_l, target_l,
@@ -133,15 +139,32 @@ void main()
 			pid_control(enc_r, target_r,
 			            get_config()->right_kp, get_config()->right_ki, get_config()->right_kd,
 			            &cur_out_r, &err_int_r, &last_err_r);
+
+			// quarto canal			
+			int32_t knob_blend = recv_get_ch(3) + 256;
+			if (knob_blend < 0) knob_blend = 0;
+			if (knob_blend > 512) knob_blend = 512;
 			
 			// os dois aqui são 16.16
 			//      16.16      16.16                         0.8          16.16      16.16
-			int32_t out_l = target_l + (get_config()->left_blend  * ((cur_out_l - target_l) >> 8));
-			int32_t out_r = target_r + (get_config()->right_blend * ((cur_out_r - target_r) >> 8));
+			cur_out_l = target_l + knob_blend * ((get_config()->left_blend  * ((cur_out_l - target_l) >> 8)) / 512);
+			cur_out_r = target_r + knob_blend * ((get_config()->right_blend * ((cur_out_r - target_r) >> 8)) / 512);
+			
+			CLAMP(cur_out_l, 250L << 16);
+			CLAMP(cur_out_r, 250L << 16);
 			
 			// Finalmente
-			motor_set_power_left(out_l >> 16);  // de volta para 16.0
-			motor_set_power_right(out_r >> 16); // idem
+			motor_set_power_left(cur_out_l >> 16);  // de volta para 16.0
+			motor_set_power_right(cur_out_r >> 16); // idem
+			
+			// Depuração via LCD
+			lcd_write_int16(0, 3, cur_out_l >> 16);
+			lcd_write_int16(1, 3, cur_out_r >> 16);
+			
+			lcd_write_chars(0, 11, " ", 1);
+			lcd_write_chars(1, 11, " ", 1);
+			lcd_write_int16(0,12, enc_l >> 16);
+			lcd_write_int16(1,12, enc_r >> 16);
 			
 			// Detecta o handshake para o modo de configuração
 			uint8_t rx;
@@ -163,6 +186,9 @@ void main()
 			
 			target_l = (int32_t)(ch1 - ch0) << 16;  // 16.16
 			target_r = (int32_t)(ch1 + ch0) << 16;  // 16.16
+			
+			CLAMP(target_l, 250L << 16);
+			CLAMP(target_r, 250L << 16);
 		}
 		
 		// Coloca o uC em modo de baixo consumo de energia
@@ -184,18 +210,13 @@ void wdt_off()
 	SREG = oldSREG;
 }
 
-//                    16.16           16.16        4.12        4.12        4.12             16.16             16.16              16.16
+//                    16.16           16.16         8.8         8.8         8.8             16.16             16.16              16.16
 void pid_control(int32_t in, int32_t target, int16_t kp, int16_t ki, int16_t kd, int32_t *cur_out, int32_t *err_int, int32_t *last_err)
 {
-	int32_t err = target - in;              // 16.16
-
-	int32_t p_err = err >> 8;               // 24.8
-	int32_t d_err = (err - *last_err) >> 8; // 24.8
-	int32_t i_err = (err + *err_int) >> 8;  // 24.8
-	
-	int32_t out = (int32_t)kp * p_err + (int32_t)ki * i_err + (int32_t)kd * d_err; // 12.20
-	
-	*cur_out += (int16_t)(out >> 4); // 16.16 de novo
-	*last_err = err;                 // 16.16
-	*err_int += err;       // 16.16
+	int32_t err = target - in;                       // 16.16
+	int32_t err_d = err - *last_err;                 // 16.16
+	*err_int += (int32_t)ki * (err >> 8);            // 16.16
+	*cur_out += (int32_t)kp * (err >> 8) + *err_int; // 16.16
+	*cur_out += (int32_t)kd * (err_d >> 8);          // 16.16
+	*last_err = err;                                 // 16.16
 }

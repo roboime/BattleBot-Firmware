@@ -5,12 +5,12 @@ import sys
 import array
 
 cfgs = {
-	"left-kp":      [0, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"left-ki":      [1, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"left-kd":      [2, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"right-kp":     [3, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"right-ki":     [4, 2, 4096.0, 0.0, 16.0, lambda _: True],
-	"right-kd":     [5, 2, 4096.0, 0.0, 16.0, lambda _: True],
+	"left-kp":      [0, 2, 256.0, 0.0, 256.0, lambda _: True],
+	"left-ki":      [1, 2, 256.0, 0.0, 256.0, lambda _: True],
+	"left-kd":      [2, 2, 256.0, 0.0, 256.0, lambda _: True],
+	"right-kp":     [3, 2, 256.0, 0.0, 256.0, lambda _: True],
+	"right-ki":     [4, 2, 256.0, 0.0, 256.0, lambda _: True],
+	"right-kd":     [5, 2, 256.0, 0.0, 256.0, lambda _: True],
 	"left-blend":   [6, 1, 255.0, 0.0, 1.0, lambda _: True],
 	"right-blend":  [7, 1, 255.0, 0.0, 1.0, lambda _: True],
 	"enc-frames":   [8, 1, 1.0, 0.0, 32.0, lambda x: int(x) == x],
@@ -52,12 +52,14 @@ def inttobytes(num, sz):
 		sz -= 1
 	return arr
 
+#---------------------------------------------------------------------------------------------------------------
+
+port = sys.argv[1]
+baud = 19200
+
 if len(sys.argv) < 2:
 	print "Uso:", sys.argv[0], "<port>"
 	sys.exit(-1)
-	
-port = sys.argv[1]
-baud = 19200
 
 try:
 	with serial.Serial(port, baud, timeout=2.0) as ser:

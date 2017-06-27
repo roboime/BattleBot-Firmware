@@ -34,7 +34,7 @@ uint8_t EEMEM eeprom_check[3];
 
 static config_struct configs;
 
-const config_struct PROGMEM default_config = { 0x0800, 0x0000, 0x0000, 0x0800, 0x0000, 0x0000, 255, 255, 8, 5 };
+const config_struct PROGMEM default_config = { 0x0100, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 255, 255, 8, 5 };
 
 // Funções para leitura e escrita de EEPROM
 void read_eeprom(void* dst, const void* src, uint8_t sz)
@@ -85,7 +85,7 @@ inline static uint8_t check_fun(const config_struct *cfg)
 	int16_t res = 0;
 	const uint8_t* values = (const uint8_t*)cfg;
 	for (uint8_t i = 0; i < sizeof(cfg); i++)
-		res ^= values[i];
+		res ^= (i+1) * values[i];
 	return res;
 }
 
@@ -190,8 +190,10 @@ inline static void* cfg_ptr(uint8_t id)
 void config_status() __attribute__((noreturn));
 void config_status()
 {
-	// Aqui a gente não precisa de interrupt
-	cli();
+	// Aqui a gente não precisa de interrupt de mudança de pino nem externo
+	PCICR = 0;
+	EIMSK = 0;
+	TIMSK0 = 0;
 	{ uint8_t ack = ACK; TX_VAR(ack); }
 
 	led_set(1);
@@ -200,7 +202,7 @@ void config_status()
 	for (;;)
 	{
 	reinit:
-#define TX_ERROR(code) do { TX_VAR(sz); uint8_t err = (code); TX_VAR(err); goto reinit; } while (0)
+#define TX_ERROR(code) do { uint8_t sz = 1; TX_VAR(sz); uint8_t err = (code); TX_VAR(err); goto reinit; } while (0)
 #define TX_ACK() do { TX_VAR(sz); uint8_t ack = ACK; TX_VAR(ack); } while (0)
 		wdt_reset();
 		uint8_t sz = 1;
@@ -230,7 +232,7 @@ void config_status()
 			uint8_t cfg = buffer[0] & 0x0F;
 			if (cfg >= num_cfgs)
 				TX_ERROR(ERROR_INVALID_VARIABLE);
-				
+
 			sz = 1 + cfg_size(cfg);
 			TX_ACK();
 			tx_data(cfg_ptr(cfg), cfg_size(cfg));
@@ -240,10 +242,10 @@ void config_status()
 		{
 			uint8_t cfg = buffer[0] & 0x0F;
 		
-			if (size < sizeof(uint8_t) + cfg_size(cfg))
-				TX_ERROR(ERROR_INVALID_PARAMETERS);
 			if (cfg >= num_cfgs)
 				TX_ERROR(ERROR_INVALID_VARIABLE);
+			if (size < sizeof(uint8_t) + cfg_size(cfg))
+				TX_ERROR(ERROR_INVALID_PARAMETERS);
 			
 			memcpy(cfg_ptr(cfg), &buffer[1], cfg_size(cfg));
 			TX_ACK();
@@ -263,6 +265,7 @@ void config_status()
 	// Salva os dados na EEPROM
 	config_save();
 
+	cli();
 	// Loop infinito para forçar o processador a resetar (watchdog)
 	for (;;);
 }
