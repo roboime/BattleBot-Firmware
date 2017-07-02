@@ -34,7 +34,7 @@ uint8_t EEMEM eeprom_check[3];
 
 static config_struct configs;
 
-const config_struct PROGMEM default_config = { 0x0100, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 255, 255, 8, 5 };
+const config_struct PROGMEM default_config = { 0x0100, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 255, 255, 8, 5, 0, 0, 0, 0 };
 
 // Funções para leitura e escrita de EEPROM
 void read_eeprom(void* dst, const void* src, uint8_t sz)
@@ -61,14 +61,14 @@ void update_eeprom(void* dst, const void* src, uint8_t sz)
 	{
 		wdt_reset();
 		while (EECR & _BV(EEPE));   // Espera o bit EEPE ir a 0
-		EEAR = (uintptr_t)cdst+i;   // Endereço de escrita
+		EEAR = (uintptr_t)(cdst+i);   // Endereço de escrita
 		
 		EECR |= _BV(EERE);          // Byte para comparação
 		uint8_t byte = EEDR;
 		
 		if (csrc[i] != byte)
 		{
-			EEAR = (uintptr_t)cdst+i;
+			EEAR = (uintptr_t)(cdst+i);
 			EEDR = csrc[i];           // Byte a ser escrito
 			EECR |= _BV(EEMPE);       // "Desativa" a proteção da escrita
 			EECR |= _BV(EEPE);        // Comanda a escrita
@@ -129,6 +129,10 @@ void config_init()
 	VOTE_PARAM(right_blend);
 	VOTE_PARAM(enc_frames);
 	VOTE_PARAM(recv_samples);
+	VOTE_PARAM(left_reverse);
+	VOTE_PARAM(right_reverse);
+	VOTE_PARAM(esc_reverse);
+	VOTE_PARAM(esc_calibration_mode);
 	
 #undef VOTE_PARAM
 }
@@ -164,6 +168,10 @@ inline static uint8_t cfg_size(uint8_t id)
 		case 7: return sizeof(configs.right_blend);
 		case 8: return sizeof(configs.enc_frames);
 		case 9: return sizeof(configs.recv_samples);
+		case 10: return sizeof(configs.left_reverse);
+		case 11: return sizeof(configs.right_reverse);
+		case 12: return sizeof(configs.esc_reverse);
+		case 13: return sizeof(configs.esc_calibration_mode);
 		default: return 0;
 	}
 }
@@ -183,6 +191,10 @@ inline static void* cfg_ptr(uint8_t id)
 		case 7: return &configs.right_blend;
 		case 8: return &configs.enc_frames;
 		case 9: return &configs.recv_samples;
+		case 10: return &configs.left_reverse;
+		case 11: return &configs.right_reverse;
+		case 12: return &configs.esc_reverse;
+		case 13: return &configs.esc_calibration_mode;
 		default: return 0;
 	}
 }

@@ -173,9 +173,9 @@ uint8_t twi_write(uint8_t address, const void* write_dest, uint8_t size)
 	
 	twi_msg* cur_msg = &twi_queue[twi_back];
 	cur_msg->size = size;
-	cur_msg->address = (const char*)address;
+	cur_msg->address = address;
 	cur_msg->read = 0;
-	cur_msg->buffer.write = write_dest;
+	cur_msg->buffer.write = (const char*)write_dest;
 	
 	uint8_t old_twi_back = twi_back;
 	INCMOD(twi_back, TWI_QUEUE_SIZE);

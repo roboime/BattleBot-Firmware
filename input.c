@@ -44,11 +44,11 @@ ISR (TIMER0_OVF_vect)
 }
 
 //volatile uint8_t overflow_count = 0;
-volatile uint8_t cur_recv_bit = 0, cur_flag = B100;
+volatile uint8_t cur_recv_bit = 0, cur_flag = B1;
 //volatile uint16_t cur_l = 0, cur_r = 0;
-volatile uint16_t last_times[4][2];
-volatile uint8_t updates[4];
-static uint8_t last_read = 0;
+volatile uint16_t last_times[5][2];
+volatile uint8_t updates[5];
+static uint8_t last_read = 0, last_read_d = 0;
 
 #define RECV_MID 375
 #define RECV_MIN 281
@@ -60,9 +60,9 @@ static uint8_t last_read = 0;
 #define ENC_DIVIDER 3
 
 #define RECV_SAMPLES 31
-uint16_t recv_readings[4][RECV_SAMPLES];
-uint8_t cur_order[4][RECV_SAMPLES];
-uint8_t cur_reading[4];
+uint16_t recv_readings[5][RECV_SAMPLES];
+uint8_t cur_order[5][RECV_SAMPLES];
+uint8_t cur_reading[5];
 
 #define ENC_FRAMES 32
 uint16_t enc_frames_l[ENC_FRAMES];
@@ -76,8 +76,8 @@ uint8_t cur_frame = 0;
 
 void input_init()
 {
-	cur_flag = B100;
-	for (uint8_t i = 0; i < 4; i++)
+	cur_flag = B1;
+	for (uint8_t i = 0; i < 5; i++)
 	{
 		last_times[i][0] = 0;
 		last_times[i][1] = 0;
@@ -130,19 +130,19 @@ void input_read_enc()
 void input_read_recv()
 {
 	// Aqui não dá pra deixar o interrupt ligado, mas a gente só desliga o do grupo C
-	PCICR &= ~_BV(PCIE1);
-	for (uint8_t i = 0; i < 4; i++)
+	PCICR = 0;
+	for (uint8_t i = 0; i < 5; i++)
 		if (flags & (RECV_AVAL0 << i))
 		{
 			recv_readings[i][cur_reading[i]] = last_times[i][1] - last_times[i][0];
 			last_times[i][0] = 0;
 			last_times[i][1] = 0;
 		}
-	PCICR |= _BV(PCIE1);
+	PCICR = B110;
 	
 	// Li o que eu precisava, posso reabilitar os interrupts
 	// Bubblesort nas amostras
-	for (uint8_t i = 0; i < 4; i++)
+	for (uint8_t i = 0; i < 5; i++)
 	{
 		if (!(flags & (RECV_AVAL0 << i))) continue;
 	
@@ -225,9 +225,30 @@ ISR (PCINT1_vect)
 		if (cur_recv_bit == 4)
 		{
 			cur_recv_bit = 0;
-			cur_flag = B100;
+			cur_flag = B1;
 		}
 	}
 	
 	last_read = cur_read;
 }
+
+// Interrupt especial do canal do ESC
+ISR (PCINT2_vect)
+{
+	wdt_reset();
+	uint16_t cur_ticks;
+	((uint8_t*)&cur_ticks)[0] = TCNT0;
+	((uint8_t*)&cur_ticks)[1] = overflow_count_v;
+	uint8_t cur_read_d = (PIND & _BV(7)) != 0;
+	
+	if (cur_read_d && !last_read_d)
+		last_times[4][0] = cur_ticks;
+	else if (!cur_read_d && last_read_d)
+	{
+		last_times[4][1] = cur_ticks;
+		flags |= RECV_AVAL4;
+	}
+	
+	last_read_d = cur_read_d;
+}
+

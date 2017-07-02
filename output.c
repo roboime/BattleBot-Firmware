@@ -14,6 +14,8 @@
 #define MOTOR_MAX_POWER 252
 #define MOTOR_MIN_POWER 8
 
+static volatile uint8_t esc_power = 123;
+
 void motor_set_power_left(int16_t power)
 {
 	CLAMP(power, MOTOR_MAX_POWER);
@@ -56,8 +58,39 @@ void motor_set_power_right(int16_t power)
 	}
 }
 
+void esc_set_power(int16_t power)
+{
+	CLAMP(power, 230);
+	esc_power = 123 + power * 17 / 32;
+	flags |= ESC_AVAILABLE;
+}
+
 void led_set(uint8_t on)
 {
 	if (on) PORTC |= 1;
 	else PORTC &= ~1;
+}
+
+ISR (TIMER2_COMPA_vect, ISR_NAKED)
+{
+	PORTD &= ~_BV(4);
+	asm volatile("reti");
+}
+
+ISR (TIMER2_OVF_vect)
+{
+	static uint8_t counter = 1;
+	switch (counter)
+	{
+		case 19: TIMSK2 &= ~_BV(OCIE2A); break;
+		case 1: if (flags & ESC_AVAILABLE) PORTD |= _BV(4); break;
+		case 0:
+			counter = 20;
+			TIFR2 = _BV(OCF2A); // des-seta a flag de comparação
+			OCR2A = esc_power; // seta o valor para a comparação
+			TIMSK2 |= _BV(OCIE2A); // liga o interrupt na comparação
+			break;
+		default: break;
+	}
+	counter--;
 }

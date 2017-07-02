@@ -34,6 +34,7 @@ int32_t cur_out_r = 0, err_int_r = 0, last_err_r = 0, target_r = 0;
 
 //                    16.16           16.16        4.12        4.12        4.12             16.16             16.16              16.16
 void pid_control(int32_t in, int32_t target, int16_t kp, int16_t ki, int16_t kd, int32_t *cur_out, int32_t *err_int, int32_t *last_err);
+void esc_control();
 
 void main() __attribute__((noreturn));
 void main()
@@ -42,9 +43,9 @@ void main()
 	cli();
 
 	// Configuração das direções das portas:
-	DDRB = B00111111; // grupo B: motor direito, encoder direito
+	DDRB = B00000110; // grupo B: motor direito, encoder direito
 	DDRC = B00000000; // grupo C: LED de apoio, receptor
-	DDRD = B11110000; // grupo D: motor esquerdo, encoder esquerdo, RX/TX
+	DDRD = B01110000; // grupo D: motor esquerdo, encoder esquerdo, RX/TX
 	
 	// Configuração do estado inicial e resistores de pullup
 	PORTB = B00000000; // grupo B: pullup na DIP switch
@@ -52,8 +53,9 @@ void main()
 	PORTD = B00000000; // grupo D: pullup na DIP switch
 	
 	// Configuração dos interrupts de mudança de pino
-	PCMSK1 = B00111100; // grupo C: receptor
-	PCICR = B010; // habilita os três interrupts
+	PCMSK1 = B00001111; // grupo C: receptor
+	PCMSK2 = B10000000; // grupo B: canal especial do ESC
+	PCICR = B110; // habilita os três interrupts
 
 	// Configuração dos interrupts externos para a leitura dos encoders
 	EICRA = B1111; // interrupt na subida lógica de cada um deles
@@ -61,7 +63,7 @@ void main()
 	
 	// Configuração dos timers: Timer0 usado no motor esquerdo, Timer1 usado no motor direito
 	TCCR0A = B10100011; // Timer0: as duas saídas invertidas (LOW e depois HIGH)
-	TCCR0B = B00000011; // Timer0: prescaler de 8 ciclos, fast PWM
+	TCCR0B = B00000011; // Timer0: prescaler de 64 ciclos, fast PWM
 	TIMSK0 = B00000001; // Timer0: habilitar interrupt no overflow, usado para contar ciclos
 	OCR0A = 0;
 	OCR0B = 0;  // Timer0: PWM de 0 nas duas saídas
@@ -72,12 +74,14 @@ void main()
 	OCR1A = 0;
 	OCR1B = 0;  // Timer1: PWM de 0 nas duas saídas
 	
-	TCCR2A = B00000000; // Timer2:
-	TCCR2B = B00000000; // Timer2: completamente desabilitado
-	TIMSK2 = B00000000; // Timer2:
+	TCCR2A = B00000000; // Timer2: overflow normal
+	TCCR2B = B00000100; // Timer2: prescaler de 64 ciclos
+	TIMSK2 = B00000001; // Timer2: habilitar overflow
+	OCR2A = 0;
+	OCR2B = 0;
 	
 	// Desativar alguns periféricos para redução de consumo de energia
-	PRR = B11000101;
+	PRR = B10000101;
 
 	// Zera todos os dados usados pelos módulos de input, output, serial e config
 	serial_init();
@@ -87,7 +91,7 @@ void main()
 	
 	// Configuração do timer de watchdog, para resetar o microprocessador caso haja alguma falha
 	wdt_enable(WDTO_60MS);
-
+	
 	uint32_t counter = 250000;
 	while (counter--)
 	{	
@@ -102,12 +106,6 @@ void main()
 				config_status();
 			}
 	}
-	
-	lcd_init();
-	LCD_WRITE_STR(0,0,"LP:");
-	LCD_WRITE_STR(1,0,"RP:");
-	LCD_WRITE_STR(0,8,"LS:");
-	LCD_WRITE_STR(1,8,"RS:");
 
 	// Habilita interrupts de novo
 	sei();
@@ -157,24 +155,7 @@ void main()
 			motor_set_power_left(cur_out_l >> 16);  // de volta para 16.0
 			motor_set_power_right(cur_out_r >> 16); // idem
 			
-			// Depuração via LCD
-			lcd_write_int16(0, 3, cur_out_l >> 16);
-			lcd_write_int16(1, 3, cur_out_r >> 16);
-			
-			lcd_write_chars(0, 11, " ", 1);
-			lcd_write_chars(1, 11, " ", 1);
-			lcd_write_int16(0,12, enc_l >> 16);
-			lcd_write_int16(1,12, enc_r >> 16);
-			
-			// Detecta o handshake para o modo de configuração
-			uint8_t rx;
-			while (RX_VAR(rx))
-				if (rx == HANDSHAKE_RX_BYTE)
-				{
-					DDRB = 0;
-					DDRD = 0;
-					config_status();
-				}
+			esc_control();
 		}
 		if (flags & EXECUTE_RECV)
 		{
@@ -185,7 +166,9 @@ void main()
 			if (recv_get_ch(2) > 0) ch0 = -ch0;
 			
 			target_l = (int32_t)(ch1 - ch0) << 16;  // 16.16
+			if (get_config()->left_reverse) target_l = -target_l;
 			target_r = (int32_t)(ch1 + ch0) << 16;  // 16.16
+			if (get_config()->right_reverse) target_r = -target_r;
 			
 			CLAMP(target_l, 250L << 16);
 			CLAMP(target_r, 250L << 16);
@@ -219,4 +202,68 @@ void pid_control(int32_t in, int32_t target, int16_t kp, int16_t ki, int16_t kd,
 	*cur_out += (int32_t)kp * (err >> 8) + *err_int; // 16.16
 	*cur_out += (int32_t)kd * (err_d >> 8);          // 16.16
 	*last_err = err;                                 // 16.16
+}
+
+// CONTROLE DO ESC
+#define ESC_DEADZONE 10
+#define ESC_DAMPING_TOTAL_TIME 36
+
+uint8_t esc_damping_frame = ESC_DAMPING_TOTAL_TIME, damping_available = 0;
+uint8_t esc_first_delay = 25;
+int16_t prev_esc = 0, filtered_esc = 0;
+
+int16_t esc_damping()
+{
+	if (esc_damping_frame < 12) return -6*esc_damping_frame;
+	else if (esc_damping_frame < 24) return -72 + 6*(esc_damping_frame - 12);
+	else return 0;
+}
+
+void esc_control()
+{
+	int16_t esc = recv_get_ch(4) - 32;
+	if (esc < -230) esc = -230;
+	if (esc >  230) esc =  230;
+
+	if (get_config()->esc_calibration_mode)
+	{
+		if (esc > 140) esc = 230;
+		else if (esc < -140) esc = -230;
+		else esc = 0;
+		
+		esc_set_power(esc);
+	}
+	else
+	{
+		if (esc_first_delay > 0)
+		{
+			esc_first_delay--;
+			return;
+		}
+	
+		if (esc_damping_frame < ESC_DAMPING_TOTAL_TIME)
+		{
+			esc = esc_damping();
+			esc_damping_frame++;
+		}
+		else
+		{
+			if (damping_available && prev_esc > -ESC_DEADZONE && esc <= -ESC_DEADZONE)
+			{
+				esc_damping_frame = 0;
+				damping_available = 0;
+			}
+			else if (!damping_available && prev_esc < ESC_DEADZONE && esc >= ESC_DEADZONE)
+				damping_available = 1;
+			else if (esc >= -ESC_DEADZONE && esc <= ESC_DEADZONE) esc = 0;
+		}
+
+		prev_esc = esc;
+	
+		filtered_esc += (esc - filtered_esc) * 7 / 16;
+		
+		if (get_config()->esc_reverse)
+			esc_set_power(-filtered_esc);
+		else esc_set_power(filtered_esc);
+	}
 }

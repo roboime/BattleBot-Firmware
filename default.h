@@ -26,8 +26,10 @@
 #define RECV_AVAL1 4
 #define RECV_AVAL2 8
 #define RECV_AVAL3 16
-#define TWI_PREV_START 32
-#define EXECUTE_RECV (RECV_AVAL0|RECV_AVAL1|RECV_AVAL2|RECV_AVAL3)
+#define RECV_AVAL4 32
+#define TWI_PREV_START 64
+#define ESC_AVAILABLE 128
+#define EXECUTE_RECV (RECV_AVAL0|RECV_AVAL1|RECV_AVAL2|RECV_AVAL3|RECV_AVAL4)
 #define flags GPIOR0
 
 // A gente usa a funçaão wdt_off() porque a wdt_disable() possui erros
@@ -44,6 +46,7 @@ uint16_t enc_right();
 void motor_set_power_left(int16_t power);
 void motor_set_power_right(int16_t power);
 void led_set(uint8_t on);
+void esc_set_power(int16_t power);
 
 void serial_init();
 void tx_data(const void* ptr, uint8_t sz);
@@ -72,8 +75,10 @@ typedef struct
 	uint16_t right_kp, right_ki, right_kd; // 8.8
 	uint8_t left_blend, right_blend;
 	uint8_t enc_frames, recv_samples;
+	uint8_t left_reverse, right_reverse, esc_reverse;
+	uint8_t esc_calibration_mode;
 } config_struct;
-#define num_cfgs 10
+#define num_cfgs 14
 
 void config_init();
 void config_status();
