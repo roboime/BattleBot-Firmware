@@ -11,14 +11,12 @@ cfgs = {
 	"right-kp":             [3, 2, 256.0, 0.0, 256.0, lambda _: True],
 	"right-ki":             [4, 2, 256.0, 0.0, 256.0, lambda _: True],
 	"right-kd":             [5, 2, 256.0, 0.0, 256.0, lambda _: True],
-	"left-blend":           [6, 1, 255.0, 0.0, 1.0, lambda _: True],
-	"right-blend":          [7, 1, 255.0, 0.0, 1.0, lambda _: True],
-	"enc-frames":           [8, 1, 1.0, 0.0, 32.0, lambda x: int(x) == x],
-	"recv-samples":         [9, 1, 1.0, 0.0, 31.0, lambda x: int(x) == x and int(x % 2) == 1],
-	"left-reverse":         [10, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x],
-	"right-reverse":        [11, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x],
-	"esc-reverse":          [12, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x],
-	"esc-calibration-mode": [13, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x]
+	"enc-frames":           [6, 1, 1.0, 0.0, 32.0, lambda x: int(x) == x],
+	"recv-samples":         [7, 1, 1.0, 0.0, 31.0, lambda x: int(x) == x and int(x) % 2 == 1],
+	"left-reverse":         [8, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x],
+	"right-reverse":        [9, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x],
+	"esc-reverse":          [10, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x],
+	"esc-calibration-mode": [11, 1, 1.0, 0.0, 1.0, lambda x: int(x) == x]
 }
 write_offset = 0x30
 ack = 0xac

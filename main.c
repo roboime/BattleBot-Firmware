@@ -39,11 +39,8 @@ void esc_control();
 void main() __attribute__((noreturn));
 void main()
 {
-	// Desabilitar interrupts
-	cli();
-
 	// Configuração das direções das portas:
-	DDRB = B00000110; // grupo B: motor direito, encoder direito
+	DDRB = B00100110; // grupo B: motor direito, encoder direito
 	DDRC = B00000000; // grupo C: LED de apoio, receptor
 	DDRD = B01110000; // grupo D: motor esquerdo, encoder esquerdo, RX/TX
 	
@@ -62,13 +59,13 @@ void main()
 	EIMSK = B11;   // habilita os dois interrupts externos
 	
 	// Configuração dos timers: Timer0 usado no motor esquerdo, Timer1 usado no motor direito
-	TCCR0A = B10100011; // Timer0: as duas saídas invertidas (LOW e depois HIGH)
+	TCCR0A = B10100011; // Timer0: as duas saídas diretas
 	TCCR0B = B00000011; // Timer0: prescaler de 64 ciclos, fast PWM
 	TIMSK0 = B00000001; // Timer0: habilitar interrupt no overflow, usado para contar ciclos
 	OCR0A = 0;
 	OCR0B = 0;  // Timer0: PWM de 0 nas duas saídas
 	
-	TCCR1A = B10100001; // Timer1: as duas saídas invertidas (LOW e depois HIGH)
+	TCCR1A = B11110001; // Timer1: as duas saídas invertidas (LOW e depois HIGH)
 	TCCR1B = B00001011; // Timer1: prescaler de 64 ciclos, fast PWM;
 	TIMSK1 = B00000000; // Timer1: desabilitar todos os interrupts
 	OCR1A = 0;
@@ -76,7 +73,7 @@ void main()
 	
 	TCCR2A = B00000000; // Timer2: overflow normal
 	TCCR2B = B00000100; // Timer2: prescaler de 64 ciclos
-	TIMSK2 = B00000001; // Timer2: habilitar overflow
+	TIMSK2 = B00000000; // Timer2: habilitar overflow
 	OCR2A = 0;
 	OCR2B = 0;
 	
@@ -123,11 +120,11 @@ void main()
 
 			led_set(frame_counter < BLINK_FRAMES);
 			if (++frame_counter == 2*BLINK_FRAMES) frame_counter = 0;
-			
+
 			// Controle do PID: enc_left() e enc_right() 16.0
 			int32_t enc_l = (int32_t)SGN(cur_out_l, enc_left()) << 16;   // enc_l 16.16
 			int32_t enc_r = (int32_t)SGN(cur_out_r, enc_right()) << 16;  // enc_r 16.16
-			
+
 			// PID do motor esquerdo
 			pid_control(enc_l, target_l,
 			            get_config()->left_kp, get_config()->left_ki, get_config()->left_kd,
@@ -138,59 +135,69 @@ void main()
 			            get_config()->right_kp, get_config()->right_ki, get_config()->right_kd,
 			            &cur_out_r, &err_int_r, &last_err_r);
 
-			// quarto canal			
+			// quarto canal
 			int32_t knob_blend = recv_get_ch(3) + 256;
 			if (knob_blend < 0) knob_blend = 0;
 			if (knob_blend > 512) knob_blend = 512;
-			
+
 			// os dois aqui são 16.16
 			//      16.16      16.16                         0.8          16.16      16.16
-			cur_out_l = target_l + knob_blend * ((get_config()->left_blend  * ((cur_out_l - target_l) >> 8)) / 512);
-			cur_out_r = target_r + knob_blend * ((get_config()->right_blend * ((cur_out_r - target_r) >> 8)) / 512);
-			
+			cur_out_l = target_l + knob_blend * ((cur_out_l - target_l) / 16) / 32;
+			cur_out_r = target_r + knob_blend * ((cur_out_r - target_r) / 16) / 32;
+
+			SETMIN(cur_out_l, 14L << 16);
+			SETMIN(cur_out_r, 14L << 16);
 			CLAMP(cur_out_l, 250L << 16);
 			CLAMP(cur_out_r, 250L << 16);
-			
+
 			// Finalmente
 			motor_set_power_left(cur_out_l >> 16);  // de volta para 16.0
 			motor_set_power_right(cur_out_r >> 16); // idem
-			
+
 			esc_control();
+			
+			{
+				struct { uint8_t framestart; int16_t target, out, enc; }
+				data = { 0xcf, target_l >> 16, cur_out_l >> 16, enc_l >> 16 };
+				TX_VAR(data);
+			}
 		}
 		if (flags & EXECUTE_RECV)
-		{
+		{		
 			input_read_recv();
 			
 			int16_t ch0 = recv_get_ch(0);       // 16.0
 			int16_t ch1 = recv_get_ch(1);       // 16.0
-			if (recv_get_ch(2) > 0) ch0 = -ch0;
+			if (recv_get_ch(2) > 0)
+			{
+				ch0 = -ch0;
+				ch1 = -ch1;
+			}
 			
 			target_l = (int32_t)(ch1 - ch0) << 16;  // 16.16
 			if (get_config()->left_reverse) target_l = -target_l;
 			target_r = (int32_t)(ch1 + ch0) << 16;  // 16.16
 			if (get_config()->right_reverse) target_r = -target_r;
 			
+			SETMIN(target_l, 14L << 16);
+			SETMIN(target_r, 14L << 16);
 			CLAMP(target_l, 250L << 16);
 			CLAMP(target_r, 250L << 16);
 		}
 		
 		// Coloca o uC em modo de baixo consumo de energia
-		sleep_mode();
+		if (!(flags & (EXECUTE_ENC|EXECUTE_RECV)));
+			sleep_mode();
 	}
 }
 
 // Essa função foi escrita porque a wdt_disable() original possui erros de operação
 void wdt_off()
 {
-	uint8_t oldSREG = SREG;
-	cli();
-	
 	wdt_reset();
 	MCUSR = 0;
 	WDTCSR |= _BV(WDCE) | _BV(WDE); // "Desativa" a proteção de leitura
 	WDTCSR = 0;                     // Desliga o watchdog
-	
-	SREG = oldSREG;
 }
 
 //                    16.16           16.16         8.8         8.8         8.8             16.16             16.16              16.16

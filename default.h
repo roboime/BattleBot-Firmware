@@ -19,6 +19,7 @@
 #include <string.h>
 #include "binaries.h"
 
+#define SETMIN(p,m) do { if (p >= -(m) && p <= -(m)) p = 0; } while (0)
 #define CLAMP(p,m) do { if (p > (m)) p = (m); else if (p < -(m)) p = -(m); } while (0)
 
 #define EXECUTE_ENC 1
@@ -73,12 +74,11 @@ typedef struct
 {
 	uint16_t left_kp, left_ki, left_kd;    // 8.8
 	uint16_t right_kp, right_ki, right_kd; // 8.8
-	uint8_t left_blend, right_blend;
 	uint8_t enc_frames, recv_samples;
 	uint8_t left_reverse, right_reverse, esc_reverse;
 	uint8_t esc_calibration_mode;
 } config_struct;
-#define num_cfgs 14
+#define num_cfgs 12
 
 void config_init();
 void config_status();

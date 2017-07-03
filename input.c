@@ -56,8 +56,7 @@ static uint8_t last_read = 0, last_read_d = 0;
 #define RECV_MULT 45
 #define RECV_DENOM 16
 
-// TODO: mudar esse parâmetro quando passar p/ o robô real
-#define ENC_DIVIDER 3
+#define ENC_DIVIDER 2
 
 #define RECV_SAMPLES 31
 uint16_t recv_readings[5][RECV_SAMPLES];
@@ -186,23 +185,27 @@ int16_t recv_get_ch(uint8_t ch)
 
 uint16_t enc_left()
 {
-	return avg_frames_l / get_config()->enc_frames;
+	return avg_frames_l / get_config()->enc_frames / ENC_DIVIDER;
 }
 
 uint16_t enc_right()
 {
-	return avg_frames_r / get_config()->enc_frames;
+	return avg_frames_r / get_config()->enc_frames / ENC_DIVIDER;
 }
 
 // Interrupt do receptor
 ISR (PCINT1_vect)
 {
-	wdt_reset();
 	uint16_t cur_ticks;
 	((uint8_t*)&cur_ticks)[0] = TCNT0;
 	((uint8_t*)&cur_ticks)[1] = overflow_count_v;
-	uint8_t cur_read = (PINC & (cur_flag)) != 0;
+
+	PCICR = 0;
+	sei();
 	
+	wdt_reset();
+	uint8_t cur_read = (PINC & (cur_flag)) != 0;
+
 	if (cur_read && cur_recv_bit == 0)
 		flags |= EXECUTE_ENC;
 	
@@ -230,17 +233,23 @@ ISR (PCINT1_vect)
 	}
 	
 	last_read = cur_read;
+	
+	cli();
+	PCICR = B110;
 }
 
 // Interrupt especial do canal do ESC
 ISR (PCINT2_vect)
 {
-	wdt_reset();
 	uint16_t cur_ticks;
 	((uint8_t*)&cur_ticks)[0] = TCNT0;
 	((uint8_t*)&cur_ticks)[1] = overflow_count_v;
-	uint8_t cur_read_d = (PIND & _BV(7)) != 0;
 	
+	PCICR = 0;
+	sei();
+	
+	wdt_reset();
+	uint8_t cur_read_d = (PIND & _BV(7)) != 0;
 	if (cur_read_d && !last_read_d)
 		last_times[4][0] = cur_ticks;
 	else if (!cur_read_d && last_read_d)
@@ -250,5 +259,8 @@ ISR (PCINT2_vect)
 	}
 	
 	last_read_d = cur_read_d;
+	
+	cli();
+	PCICR = B110;
 }
 

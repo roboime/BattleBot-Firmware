@@ -11,8 +11,8 @@
 
 #include "default.h"
 
-#define MOTOR_MAX_POWER 252
-#define MOTOR_MIN_POWER 8
+#define MOTOR_MAX_POWER 250
+#define MOTOR_MIN_POWER 14
 
 static volatile uint8_t esc_power = 123;
 
@@ -67,8 +67,8 @@ void esc_set_power(int16_t power)
 
 void led_set(uint8_t on)
 {
-	if (on) PORTC |= 1;
-	else PORTC &= ~1;
+	if (on) PORTB |= _BV(5);
+	else PORTB &= ~_BV(5);
 }
 
 ISR (TIMER2_COMPA_vect, ISR_NAKED)

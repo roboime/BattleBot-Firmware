@@ -33,8 +33,7 @@ config_struct EEMEM eeprom_configs[3];
 uint8_t EEMEM eeprom_check[3];
 
 static config_struct configs;
-
-const config_struct PROGMEM default_config = { 0x0100, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 255, 255, 8, 5, 0, 0, 0, 0 };
+const config_struct PROGMEM default_config = { 0x0100, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 8, 5, 0, 0, 0, 0 };
 
 // Funções para leitura e escrita de EEPROM
 void read_eeprom(void* dst, const void* src, uint8_t sz)
@@ -44,9 +43,8 @@ void read_eeprom(void* dst, const void* src, uint8_t sz)
 
 	for (uint8_t i = 0; i < sz; i++)
 	{
-		wdt_reset();
 		while (EECR & _BV(EEPE));   // Espera o bit EEPE ir a 0
-		EEAR = (uintptr_t)(csrc+i); // Define o endereço de leitura
+		EEAR = (uintptr_t)csrc+i;   // Define o endereço de leitura
 		EECR |= _BV(EERE);          // Comanda a leitura da EEPROM
 		cdst[i] = EEDR;             // Guarda o byte lido na SRAM
 	}
@@ -61,14 +59,14 @@ void update_eeprom(void* dst, const void* src, uint8_t sz)
 	{
 		wdt_reset();
 		while (EECR & _BV(EEPE));   // Espera o bit EEPE ir a 0
-		EEAR = (uintptr_t)(cdst+i);   // Endereço de escrita
+		EEAR = (uintptr_t)cdst+i;   // Endereço de escrita
 		
 		EECR |= _BV(EERE);          // Byte para comparação
 		uint8_t byte = EEDR;
 		
 		if (csrc[i] != byte)
 		{
-			EEAR = (uintptr_t)(cdst+i);
+			EEAR = (uintptr_t)cdst+i;
 			EEDR = csrc[i];           // Byte a ser escrito
 			EECR |= _BV(EEMPE);       // "Desativa" a proteção da escrita
 			EECR |= _BV(EEPE);        // Comanda a escrita
@@ -79,22 +77,21 @@ void update_eeprom(void* dst, const void* src, uint8_t sz)
 // memcpy
 void* memcpy(void* dst, const void* src, size_t size);
 
-// Checksum = i1 ^ i2 ^ ... ^in;
+// Checksum = i1 ^ i2 ^ ... ^ in;
 inline static uint8_t check_fun(const config_struct *cfg)
 {
 	int16_t res = 0;
 	const uint8_t* values = (const uint8_t*)cfg;
 	for (uint8_t i = 0; i < sizeof(cfg); i++)
-		res ^= (i+1) * values[i];
+		res ^= values[i];
 	return res;
 }
-
 
 void config_init()
 {
 	config_struct config_copy[3];
 	uint8_t check[3];
-	
+
 	// Lê da EEPROM três vezes, para minimizar o risco de leitura errada
 	read_eeprom(config_copy, eeprom_configs, sizeof(eeprom_configs));
 	read_eeprom(check, eeprom_check, sizeof(eeprom_check));
@@ -110,6 +107,7 @@ void config_init()
 	// "Votação": se dois valores concordarem, esse será o valor utilizado
 #define VOTE_PARAM(par) do                      \
 {                                               \
+	wdt_reset();                                \
 	typeof(configs.par) v0, v1, v2;             \
 	v0 = config_copy[0].par;                    \
 	v1 = config_copy[1].par;                    \
@@ -125,8 +123,6 @@ void config_init()
 	VOTE_PARAM(right_kp);
 	VOTE_PARAM(right_ki);
 	VOTE_PARAM(right_kd);
-	VOTE_PARAM(left_blend);
-	VOTE_PARAM(right_blend);
 	VOTE_PARAM(enc_frames);
 	VOTE_PARAM(recv_samples);
 	VOTE_PARAM(left_reverse);
@@ -164,14 +160,12 @@ inline static uint8_t cfg_size(uint8_t id)
 		case 3: return sizeof(configs.right_kp);
 		case 4: return sizeof(configs.right_ki);
 		case 5: return sizeof(configs.right_kd);
-		case 6: return sizeof(configs.left_blend);
-		case 7: return sizeof(configs.right_blend);
-		case 8: return sizeof(configs.enc_frames);
-		case 9: return sizeof(configs.recv_samples);
-		case 10: return sizeof(configs.left_reverse);
-		case 11: return sizeof(configs.right_reverse);
-		case 12: return sizeof(configs.esc_reverse);
-		case 13: return sizeof(configs.esc_calibration_mode);
+		case 6: return sizeof(configs.enc_frames);
+		case 7: return sizeof(configs.recv_samples);
+		case 8: return sizeof(configs.left_reverse);
+		case 9: return sizeof(configs.right_reverse);
+		case 10: return sizeof(configs.esc_reverse);
+		case 11: return sizeof(configs.esc_calibration_mode);
 		default: return 0;
 	}
 }
@@ -187,14 +181,12 @@ inline static void* cfg_ptr(uint8_t id)
 		case 3: return &configs.right_kp;
 		case 4: return &configs.right_ki;
 		case 5: return &configs.right_kd;
-		case 6: return &configs.left_blend;
-		case 7: return &configs.right_blend;
-		case 8: return &configs.enc_frames;
-		case 9: return &configs.recv_samples;
-		case 10: return &configs.left_reverse;
-		case 11: return &configs.right_reverse;
-		case 12: return &configs.esc_reverse;
-		case 13: return &configs.esc_calibration_mode;
+		case 6: return &configs.enc_frames;
+		case 7: return &configs.recv_samples;
+		case 8: return &configs.left_reverse;
+		case 9: return &configs.right_reverse;
+		case 10: return &configs.esc_reverse;
+		case 11: return &configs.esc_calibration_mode;
 		default: return 0;
 	}
 }
@@ -203,9 +195,7 @@ void config_status() __attribute__((noreturn));
 void config_status()
 {
 	// Aqui a gente não precisa de interrupt de mudança de pino nem externo
-	PCICR = 0;
-	EIMSK = 0;
-	TIMSK0 = 0;
+	cli();
 	{ uint8_t ack = ACK; TX_VAR(ack); }
 
 	led_set(1);
@@ -245,7 +235,7 @@ void config_status()
 			if (cfg >= num_cfgs)
 				TX_ERROR(ERROR_INVALID_VARIABLE);
 
-			sz = 1 + cfg_size(cfg);
+			sz = sizeof(uint8_t) + cfg_size(cfg);
 			TX_ACK();
 			tx_data(cfg_ptr(cfg), cfg_size(cfg));
 		}
@@ -276,8 +266,7 @@ void config_status()
 
 	// Salva os dados na EEPROM
 	config_save();
-
-	cli();
+	
 	// Loop infinito para forçar o processador a resetar (watchdog)
 	for (;;);
 }
