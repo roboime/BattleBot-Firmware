@@ -12,7 +12,7 @@
 #include "default.h"
 
 #define MOTOR_MAX_POWER 250
-#define MOTOR_MIN_POWER 14
+#define MOTOR_MIN_POWER 8
 
 static volatile uint8_t esc_power = 123;
 
@@ -60,8 +60,8 @@ void motor_set_power_right(int16_t power)
 
 void esc_set_power(int16_t power)
 {
-	CLAMP(power, 230);
-	esc_power = 123 + power * 17 / 32;
+	CLAMP(power, 244);
+	esc_power = 123 + power;
 	flags |= ESC_AVAILABLE;
 }
 

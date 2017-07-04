@@ -19,7 +19,7 @@
 #include <string.h>
 #include "binaries.h"
 
-#define SETMIN(p,m) do { if (p >= -(m) && p <= -(m)) p = 0; } while (0)
+#define SETMIN(p,m) do { if (p > -(m) && p < (m)) p = 0; } while (0)
 #define CLAMP(p,m) do { if (p > (m)) p = (m); else if (p < -(m)) p = -(m); } while (0)
 
 #define EXECUTE_ENC 1
@@ -41,6 +41,7 @@ void input_read_enc();
 void input_read_recv();
 
 int16_t recv_get_ch(uint8_t ch);
+uint8_t recv_online();
 uint16_t enc_left();
 uint16_t enc_right();
 

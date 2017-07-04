@@ -41,6 +41,8 @@ ISR (INT1_vect)
 ISR (TIMER0_OVF_vect)
 {
 	overflow_count_v++;
+	if (overflow_count_v % 8 == 0)
+		flags |= EXECUTE_ENC;
 }
 
 //volatile uint8_t overflow_count = 0;
@@ -50,11 +52,11 @@ volatile uint16_t last_times[5][2];
 volatile uint8_t updates[5];
 static uint8_t last_read = 0, last_read_d = 0;
 
-#define RECV_MID 375
-#define RECV_MIN 281
-#define RECV_MAX 469
-#define RECV_MULT 45
-#define RECV_DENOM 16
+#define RECV_MID 385
+#define RECV_MIN 291
+#define RECV_MAX 479
+#define RECV_MULT 11
+#define RECV_DENOM 4
 
 #define ENC_DIVIDER 2
 
@@ -183,14 +185,19 @@ int16_t recv_get_ch(uint8_t ch)
 	return ((int16_t)recv - (int16_t)RECV_MID) * RECV_MULT / RECV_DENOM;
 }
 
+uint8_t recv_online()
+{
+	return recv_readings[0][cur_order[0][get_config()->recv_samples/2]] != 0;
+}
+
 uint16_t enc_left()
 {
-	return avg_frames_l / get_config()->enc_frames / ENC_DIVIDER;
+	return avg_frames_l / get_config()->enc_frames * 11 / 8;
 }
 
 uint16_t enc_right()
 {
-	return avg_frames_r / get_config()->enc_frames / ENC_DIVIDER;
+	return avg_frames_r / get_config()->enc_frames * 11 / 8;
 }
 
 // Interrupt do receptor
@@ -205,9 +212,6 @@ ISR (PCINT1_vect)
 	
 	wdt_reset();
 	uint8_t cur_read = (PINC & (cur_flag)) != 0;
-
-	if (cur_read && cur_recv_bit == 0)
-		flags |= EXECUTE_ENC;
 	
 	if (cur_read && !last_read)
 		last_times[cur_recv_bit][0] = cur_ticks;

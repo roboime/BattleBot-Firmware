@@ -89,7 +89,7 @@ void main()
 	// Configuração do timer de watchdog, para resetar o microprocessador caso haja alguma falha
 	wdt_enable(WDTO_60MS);
 	
-	uint32_t counter = 250000;
+	uint32_t counter = 300000;
 	while (counter--)
 	{	
 		wdt_reset();
@@ -113,53 +113,52 @@ void main()
 		// Loop principal
 		if (flags & EXECUTE_ENC)
 		{
-			static uint8_t frame_counter = 0;
-
 			flags &= (uint8_t)~EXECUTE_ENC;
-			input_read_enc();
-
+		
+			static uint8_t frame_counter = 0;
 			led_set(frame_counter < BLINK_FRAMES);
 			if (++frame_counter == 2*BLINK_FRAMES) frame_counter = 0;
-
-			// Controle do PID: enc_left() e enc_right() 16.0
-			int32_t enc_l = (int32_t)SGN(cur_out_l, enc_left()) << 16;   // enc_l 16.16
-			int32_t enc_r = (int32_t)SGN(cur_out_r, enc_right()) << 16;  // enc_r 16.16
-
-			// PID do motor esquerdo
-			pid_control(enc_l, target_l,
-			            get_config()->left_kp, get_config()->left_ki, get_config()->left_kd,
-			            &cur_out_l, &err_int_l, &last_err_l);
-			
-			// PID do motor direito  
-			pid_control(enc_r, target_r,
-			            get_config()->right_kp, get_config()->right_ki, get_config()->right_kd,
-			            &cur_out_r, &err_int_r, &last_err_r);
-
-			// quarto canal
-			int32_t knob_blend = recv_get_ch(3) + 256;
-			if (knob_blend < 0) knob_blend = 0;
-			if (knob_blend > 512) knob_blend = 512;
-
-			// os dois aqui são 16.16
-			//      16.16      16.16                         0.8          16.16      16.16
-			cur_out_l = target_l + knob_blend * ((cur_out_l - target_l) / 16) / 32;
-			cur_out_r = target_r + knob_blend * ((cur_out_r - target_r) / 16) / 32;
-
-			SETMIN(cur_out_l, 14L << 16);
-			SETMIN(cur_out_r, 14L << 16);
-			CLAMP(cur_out_l, 250L << 16);
-			CLAMP(cur_out_r, 250L << 16);
-
-			// Finalmente
-			motor_set_power_left(cur_out_l >> 16);  // de volta para 16.0
-			motor_set_power_right(cur_out_r >> 16); // idem
-
-			esc_control();
-			
+		
+			if (recv_online())
 			{
-				struct { uint8_t framestart; int16_t target, out, enc; }
-				data = { 0xcf, target_l >> 16, cur_out_l >> 16, enc_l >> 16 };
-				TX_VAR(data);
+				input_read_enc();
+
+				int32_t enc_l = (int32_t)SGN(cur_out_l, enc_left()) << 16;
+				int32_t enc_r = (int32_t)SGN(cur_out_r, enc_right()) << 16;
+
+				// regula o "peso" do PID
+				int32_t knob_blend = recv_get_ch(3) + 256;
+				if (knob_blend < 0) knob_blend = 0;
+				if (knob_blend > 512) knob_blend = 512;
+
+				if (target_l == 0) cur_out_l = err_int_l = last_err_l = 0;
+				else
+				{
+					// PID do motor esquerdo
+					pid_control(enc_l, target_l,
+							    get_config()->left_kp, get_config()->left_ki, get_config()->left_kd,
+							    &cur_out_l, &err_int_l, &last_err_l);
+					cur_out_l = target_l + knob_blend * ((cur_out_l - target_l) / 16) / 32;
+					CLAMP(cur_out_l, 1024L << 16);
+					
+				}
+				
+				if (target_r == 0) cur_out_r = err_int_r = last_err_r = 0;
+				else
+				{
+					// PID do motor direito
+					pid_control(enc_r, target_r,
+							    get_config()->right_kp, get_config()->right_ki, get_config()->right_kd,
+							    &cur_out_r, &err_int_r, &last_err_r);
+					cur_out_r = target_r + knob_blend * ((cur_out_r - target_r) / 16) / 32;
+					CLAMP(cur_out_r, 1024L << 16);
+				}
+
+				// Finalmente
+				motor_set_power_left(cur_out_l >> 16);  // de volta para 16.0
+				motor_set_power_right(cur_out_r >> 16); // idem
+
+				esc_control();
 			}
 		}
 		if (flags & EXECUTE_RECV)
@@ -174,13 +173,13 @@ void main()
 				ch1 = -ch1;
 			}
 			
-			target_l = (int32_t)(ch1 - ch0) << 16;  // 16.16
+			target_l = (int32_t)(-ch0 + ch1) << 16;  // 16.16
 			if (get_config()->left_reverse) target_l = -target_l;
-			target_r = (int32_t)(ch1 + ch0) << 16;  // 16.16
+			target_r = (int32_t)(-ch0 - ch1) << 16;  // 16.16
 			if (get_config()->right_reverse) target_r = -target_r;
 			
-			SETMIN(target_l, 14L << 16);
-			SETMIN(target_r, 14L << 16);
+			SETMIN(target_l, 22L << 16);
+			SETMIN(target_r, 22L << 16);
 			CLAMP(target_l, 250L << 16);
 			CLAMP(target_r, 250L << 16);
 		}
@@ -203,12 +202,13 @@ void wdt_off()
 //                    16.16           16.16         8.8         8.8         8.8             16.16             16.16              16.16
 void pid_control(int32_t in, int32_t target, int16_t kp, int16_t ki, int16_t kd, int32_t *cur_out, int32_t *err_int, int32_t *last_err)
 {
-	int32_t err = target - in;                       // 16.16
-	int32_t err_d = err - *last_err;                 // 16.16
-	*err_int += (int32_t)ki * (err >> 8);            // 16.16
-	*cur_out += (int32_t)kp * (err >> 8) + *err_int; // 16.16
-	*cur_out += (int32_t)kd * (err_d >> 8);          // 16.16
-	*last_err = err;                                 // 16.16
+	int32_t err = target - in;                // 16.16
+	int32_t err_d = err - *last_err;          // 16.16
+	*err_int += ((int32_t)ki * err) >> 8;     // 16.16
+	*cur_out += *err_int / 128;
+	*cur_out += ((int32_t)kp * err) >> 8;     // 16.16
+	*cur_out += ((int32_t)kd * err_d) >> 8;   // 16.16
+	*last_err = err;                          // 16.16
 }
 
 // CONTROLE DO ESC
@@ -221,21 +221,22 @@ int16_t prev_esc = 0, filtered_esc = 0;
 
 int16_t esc_damping()
 {
-	if (esc_damping_frame < 12) return -6*esc_damping_frame;
-	else if (esc_damping_frame < 24) return -72 + 6*(esc_damping_frame - 12);
+	if (esc_damping_frame < 12) return 8*esc_damping_frame;
+	else if (esc_damping_frame < 24) return 96 - 8*(esc_damping_frame - 12);
 	else return 0;
 }
 
 void esc_control()
 {
-	int16_t esc = recv_get_ch(4) - 32;
-	if (esc < -230) esc = -230;
-	if (esc >  230) esc =  230;
+	int16_t esc = recv_get_ch(4) + 12;
+	if (esc < -244) esc = -244;
+	if (esc >  244) esc =  244;
+	if (get_config()->esc_reverse) esc = -esc;
 
 	if (get_config()->esc_calibration_mode)
 	{
-		if (esc > 140) esc = 230;
-		else if (esc < -140) esc = -230;
+		if (esc > 170) esc = 244;
+		else if (esc < -170) esc = -244;
 		else esc = 0;
 		
 		esc_set_power(esc);
@@ -255,12 +256,12 @@ void esc_control()
 		}
 		else
 		{
-			if (damping_available && prev_esc > -ESC_DEADZONE && esc <= -ESC_DEADZONE)
+			if (damping_available && prev_esc < ESC_DEADZONE && esc >= ESC_DEADZONE)
 			{
 				esc_damping_frame = 0;
 				damping_available = 0;
 			}
-			else if (!damping_available && prev_esc < ESC_DEADZONE && esc >= ESC_DEADZONE)
+			else if (!damping_available && prev_esc > -ESC_DEADZONE && esc <= -ESC_DEADZONE)
 				damping_available = 1;
 			else if (esc >= -ESC_DEADZONE && esc <= ESC_DEADZONE) esc = 0;
 		}
@@ -268,9 +269,6 @@ void esc_control()
 		prev_esc = esc;
 	
 		filtered_esc += (esc - filtered_esc) * 7 / 16;
-		
-		if (get_config()->esc_reverse)
-			esc_set_power(-filtered_esc);
-		else esc_set_power(filtered_esc);
+		esc_set_power(filtered_esc);
 	}
 }
